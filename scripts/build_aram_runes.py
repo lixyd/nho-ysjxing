@@ -1,28 +1,55 @@
-import json, os, copy
+import json, os, copy, urllib.request
 ROOT = "/workspace/aram-helper/lol-aram-mayhem-hextech-helper"
 UGG = "/workspace/aram-helper/ugg-extract/package"
 PERKSTYLES = "/workspace/aram-helper/perkstyles_14.22.json"
 DDRAGON = "/workspace/aram-helper/champion_en.json"
 OUT = ROOT + "/data/aram_runes.json"
+
+# Obsolete perk IDs -> current Data Dragon equivalents (validated against latest runesReforged)
+PERK_REMAP = {
+    8138: 8140,  # Eyeball Collection -> Grisly Mementos (Domination slot 2)
+}
+
+def fetch_latest_ddragon_runes():
+    """Fetch latest zh_CN runesReforged from Riot Data Dragon; return (version, styles_list)."""
+    with urllib.request.urlopen("https://ddragon.leagueoflegends.com/api/versions.json", timeout=30) as r:
+        ver = json.loads(r.read().decode())[0]
+    url = "https://ddragon.leagueoflegends.com/cdn/%s/data/zh_CN/runesReforged.json" % ver
+    with urllib.request.urlopen(url, timeout=30) as r:
+        styles = json.loads(r.read().decode())
+    return ver, styles
+
+def collect_valid_perk_ids(styles):
+    ids = set()
+    for style in styles:
+        for slot in style.get("slots") or []:
+            for p in slot.get("runes") or []:
+                ids.add(int(p["id"]))
+    # Stat shards still used by LCU (Community Dragon perkstyles kStatMod)
+    ids.update({5001, 5002, 5003, 5005, 5007, 5008, 5010, 5011, 5012, 5013})
+    return ids
+
+def remap_perks(selected):
+    return [PERK_REMAP.get(int(x), int(x)) for x in selected]
+
 STYLE_CN = {8000: "精密", 8100: "主宰", 8200: "巫术", 8400: "坚决", 8300: "启迪"}
 KEYSTONE_CN = {
     8005: "强攻", 8008: "致命节奏", 8021: "迅捷步法", 8010: "征服者",
-    8112: "电刑", 8128: "黑暗收割", 9923: "冰雹之刃",
-    8214: "召唤：艾黎", 8229: "奥术彗星", 8230: "风暴骑手的涌动",
+    8112: "电刑", 8128: "黑暗收割", 9923: "丛刃",
+    8214: "召唤：艾黎", 8229: "奥术彗星", 8230: "风暴掠袭者的狂涌", 8992: "冥火之触",
     8437: "不灭之握", 8439: "余震", 8465: "守护者",
     8351: "冰川增幅", 8360: "启封的秘籍", 8369: "先攻",
 }
-
 ROLE_TEMPLATES = {
     "mage": {"primaryStyleId": 8200, "subStyleId": 8100, "selectedPerkIds": [8229, 8226, 8210, 8237, 8139, 8135, 5008, 5008, 5001], "primary_cn": "巫术 · 奥术彗星", "secondary_cn": "主宰"},
     "marksman": {"primaryStyleId": 8000, "subStyleId": 8100, "selectedPerkIds": [8008, 9111, 9104, 8014, 8139, 8135, 5005, 5008, 5001], "primary_cn": "精密 · 致命节奏", "secondary_cn": "主宰"},
     "fighter": {"primaryStyleId": 8000, "subStyleId": 8400, "selectedPerkIds": [8010, 9111, 9105, 8014, 8473, 8242, 5008, 5008, 5001], "primary_cn": "精密 · 征服者", "secondary_cn": "坚决"},
     "tank": {"primaryStyleId": 8400, "subStyleId": 8000, "selectedPerkIds": [8439, 8446, 8473, 8451, 9111, 9105, 5007, 5001, 5001], "primary_cn": "坚决 · 余震", "secondary_cn": "精密"},
-    "assassin": {"primaryStyleId": 8100, "subStyleId": 8000, "selectedPerkIds": [8112, 8143, 8138, 8135, 9111, 8014, 5008, 5008, 5001], "primary_cn": "主宰 · 电刑", "secondary_cn": "精密"},
+    "assassin": {"primaryStyleId": 8100, "subStyleId": 8000, "selectedPerkIds": [8112, 8143, 8140, 8135, 9111, 8014, 5008, 5008, 5001], "primary_cn": "主宰 · 电刑", "secondary_cn": "精密"},
     "support": {"primaryStyleId": 8400, "subStyleId": 8300, "selectedPerkIds": [8465, 8463, 8473, 8453, 8345, 8347, 5007, 5001, 5001], "primary_cn": "坚决 · 守护者", "secondary_cn": "启迪"},
 }
 HAND = {
-    "Kayn": {"primaryStyleId": 8100, "subStyleId": 8000, "selectedPerkIds": [8128, 8143, 8138, 8135, 9111, 8014, 5008, 5008, 5001], "primary_cn": "主宰 · 黑暗收割", "secondary_cn": "精密", "note": "heuristic (missing from u.gg-aram)"},
+    "Kayn": {"primaryStyleId": 8100, "subStyleId": 8000, "selectedPerkIds": [8128, 8143, 8140, 8135, 9111, 8014, 5008, 5008, 5001], "primary_cn": "主宰 · 黑暗收割", "secondary_cn": "精密", "note": "heuristic (missing from u.gg-aram)"},
     "Mel": {"primaryStyleId": 8200, "subStyleId": 8100, "selectedPerkIds": [8229, 8226, 8210, 8237, 8139, 8135, 5008, 5008, 5001], "primary_cn": "巫术 · 奥术彗星", "secondary_cn": "主宰", "note": "heuristic (new champ)"},
     "Locke": {"primaryStyleId": 8000, "subStyleId": 8100, "selectedPerkIds": [8008, 9111, 9104, 8014, 8139, 8135, 5005, 5008, 5001], "primary_cn": "精密 · 致命节奏", "secondary_cn": "主宰", "note": "heuristic (new champ)"},
     "Yunara": {"primaryStyleId": 8000, "subStyleId": 8100, "selectedPerkIds": [8008, 9111, 9104, 8014, 8139, 8135, 5005, 5008, 5001], "primary_cn": "精密 · 致命节奏", "secondary_cn": "主宰", "note": "heuristic (new champ)"},
@@ -45,6 +72,14 @@ ps = json.load(open(PERKSTYLES))
 for style in ps["styles"]:
     sid = int(style["id"])
     style_slots[sid] = [[int(x) for x in slot.get("perks") or []] for slot in (style.get("slots") or [])[:4]]
+
+# Overlay with latest Data Dragon slot layouts (authoritative perk IDs)
+dd_ver, dd_styles = fetch_latest_ddragon_runes()
+valid_ids = collect_valid_perk_ids(dd_styles)
+for style in dd_styles:
+    sid = int(style["id"])
+    style_slots[sid] = [[int(x["id"]) for x in slot.get("runes") or []] for slot in (style.get("slots") or [])[:4]]
+print("Data Dragon", dd_ver, "valid runes+shards", len(valid_ids))
 
 en_tags = {}
 dd = json.load(open(DDRAGON))
@@ -110,7 +145,7 @@ for cn, en in cn_to_en.items():
         entry = data[0]
         r = entry["runes"][0]
         primary, sub = int(r["primaryStyleId"]), int(r["subStyleId"])
-        selected = reorder([int(x) for x in r["selectedPerkIds"]], primary, sub)
+        selected = reorder(remap_perks([int(x) for x in r["selectedPerkIds"]]), primary, sub)
         page = {
             "role": role,
             "name": "ARAM助手-%s" % cn,
@@ -124,12 +159,14 @@ for cn, en in cn_to_en.items():
         stats["ugg"] += 1
     elif en in HAND:
         page = copy.deepcopy(HAND[en])
+        page["selectedPerkIds"] = remap_perks(page["selectedPerkIds"])
         page["role"] = role
         page["name"] = "ARAM助手-%s" % cn
         stats["hand"] += 1
         gaps.append("%s/%s hand-tuned" % (cn, en))
     else:
         page = copy.deepcopy(ROLE_TEMPLATES[role])
+        page["selectedPerkIds"] = remap_perks(page["selectedPerkIds"])
         page["role"] = role
         page["name"] = "ARAM助手-%s" % cn
         page["note"] = "heuristic from DDragon tags %s" % (tags or ["?"])
@@ -156,13 +193,24 @@ for cn, en in cn_to_en.items():
         if x not in hints[role]:
             hints[role].append(x)
 
+def ensure_valid(page):
+    page["selectedPerkIds"] = remap_perks(page["selectedPerkIds"])
+    bad = [x for x in page["selectedPerkIds"] if x not in valid_ids]
+    if bad:
+        raise SystemExit("invalid perk ids %s in %s" % (bad, page.get("name")))
+
+for pg in [default] + list(roles.values()) + list(champions.values()):
+    ensure_valid(pg)
+
 out = {
     "_meta": {
-        "note": "Full ARAM rune coverage 2026-09-09. Primary source champ-r u.gg-aram 14.22.1. Perk IDs reordered for LCU. Missing champs use DDragon tags + heuristics.",
-        "source": "champ-r/u.gg-aram",
+        "note": "Full ARAM rune coverage. Stats from match dataset (u.gg-aram); perk/style IDs validated against Riot Data Dragon %s. Remaps: %s" % (dd_ver, PERK_REMAP),
+        "source": "@champ-r/u.gg-aram + Riot Data Dragon",
         "sourceVersion": "14.22.1-v1731961059465",
+        "ddragonVersion": dd_ver,
         "built": "2026-09-09",
         "stats": stats,
+        "perkRemaps": {str(k): v for k, v in PERK_REMAP.items()},
         "style_ids": {"精密": 8000, "主宰": 8100, "巫术": 8200, "坚决": 8400, "启迪": 8300},
     },
     "default": default,

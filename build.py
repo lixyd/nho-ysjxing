@@ -1,5 +1,5 @@
 """
-ARAM 海克斯助手 - 一键打包脚本
+nho有手就行 - Windows 一键打包脚本（须在 Windows 上运行）
 运行: python build.py
 输出: dist/ARAMHelper/
 """

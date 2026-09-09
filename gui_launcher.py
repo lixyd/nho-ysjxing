@@ -1,5 +1,5 @@
 """
-ARAM 全能助手 - GUI 启动器
+nho有手就行 - GUI 启动器
 独立 EXE 入口点，提供图形化界面与系统托盘支持
 """
 import tkinter as tk
@@ -374,7 +374,7 @@ class TrayManager:
             pystray.MenuItem("显示窗口", self._on_show),
             pystray.MenuItem("退出程序", self._on_quit),
         )
-        self.icon = pystray.Icon("ARAM助手", image, "ARAM 全能助手", menu)
+        self.icon = pystray.Icon("nho有手就行", image, "nho有手就行", menu)
         self._thread = threading.Thread(target=self.icon.run, daemon=True)
         self._thread.start()
 
@@ -615,7 +615,7 @@ class UpdateDialog:
 # ================= 主 GUI 应用 =================
 
 class LauncherApp:
-    """ARAM 全能助手 - 主界面"""
+    """nho有手就行 - 主界面"""
 
     # 配色方案 (引用统一主题)
     BG          = Theme.BG
@@ -639,7 +639,7 @@ class LauncherApp:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("ARAM 全能助手 · 海克斯 / 匹配 / 符文")
+        self.root.title("nho有手就行 · 海克斯 / 匹配 / 符文")
         self.root.geometry("560x780")
         self.root.minsize(520, 700)
         self.root.configure(bg=self.BG)
@@ -760,7 +760,7 @@ class LauncherApp:
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side=tk.LEFT)
-        tk.Label(title_frame, text="ARAM 全能助手",
+        tk.Label(title_frame, text="nho有手就行",
                  font=self.FONT_TITLE, fg=self.TEXT, bg=self.BG).pack(anchor="w")
         tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
                  font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
@@ -1108,7 +1108,7 @@ class LauncherApp:
             messagebox.showinfo("提示", "请先点击「开始识别」再最小化到托盘")
             return
         self.root.withdraw()
-        self.tray.notify("ARAM 全能助手", "程序已最小化到系统托盘，热键仍然有效")
+        self.tray.notify("nho有手就行", "程序已最小化到系统托盘，热键仍然有效")
         # 确保 overlay 仍然可见
         if self.overlay_window:
             self.root.after(100, self._ensure_overlay_visible)
@@ -1465,7 +1465,7 @@ def main():
 
     except Exception as e:
         try:
-            messagebox.showerror("ARAM 全能助手 - 启动错误",
+            messagebox.showerror("nho有手就行 - 启动错误",
                                  f"程序启动时发生错误:\n\n{traceback.format_exc()}")
         except Exception:
             print(f"FATAL: {e}")
