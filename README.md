@@ -10,6 +10,20 @@
 前往 **[Releases](https://github.com/lixyd/nho-ysjxing/releases)** 下载最新 `nho-ysjxing-windows.zip`：解压后以管理员运行 `ARAMHelper.exe`，游戏请用无边框窗口模式。
 
 
+
+## Windows 安装包
+
+通过 GitHub Actions 在 `windows-latest` 上自动打包（不随每次 `main` 推送触发，以节省私有仓库 Actions 分钟数）：
+
+1. **手动构建 → Artifacts**  
+   打开仓库 **Actions** → 选 **Build Windows** → **Run workflow**。跑完后在该次 run 的 **Artifacts** 下载 `nho-ysjxing-windows`（约保留 14 天）。解压得到 `ARAMHelper/`，以管理员运行 `ARAMHelper.exe`。
+
+2. **打 tag 发 Release**  
+   推送形如 `vX.Y.Z` 的 tag（例如 `git tag v1.0.0 && git push origin v1.0.0`），同一 workflow 会构建并把 `nho-ysjxing-windows.zip` 挂到对应 **Release**。也可直接从 [Releases](https://github.com/lixyd/nho-ysjxing/releases) 下载。
+
+工作流文件：`.github/workflows/build-windows.yml`。
+
+---
 ![Python](https://img.shields.io/badge/Python-3.9~3.12-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6)
 ![License](https://img.shields.io/badge/License-MIT-green)
