@@ -1,5 +1,10 @@
 # nho有手就行
 
+
+### 游戏内效果
+
+![海克斯推荐叠层](docs/demo_ingame_hex.jpg)
+
 ## 下载安装包
 
 前往 **[Releases](https://github.com/lixyd/nho-ysjxing/releases)** 下载最新 `nho-ysjxing-windows.zip`：解压后以管理员运行 `ARAMHelper.exe`，游戏请用无边框窗口模式。
