@@ -102,6 +102,10 @@ def build():
         "--hidden-import", "scripts.hero_scraper",
         "--hidden-import", "scripts.updater",
         "--hidden-import", "scripts.utils",
+        "--hidden-import", "scripts.matchmaking",
+        "--hidden-import", "scripts.runes",
+        "--hidden-import", "scripts.auto_hex",
+        "--hidden-import", "scripts.config",
 
         ENTRY_POINT,
     ]

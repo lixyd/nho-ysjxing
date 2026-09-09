@@ -1,5 +1,10 @@
 # nho有手就行
 
+## 下载安装包
+
+前往 **[Releases](https://github.com/lixyd/nho-ysjxing/releases)** 下载最新 `nho-ysjxing-windows.zip`：解压后以管理员运行 `ARAMHelper.exe`，游戏请用无边框窗口模式。
+
+
 ![Python](https://img.shields.io/badge/Python-3.9~3.12-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6)
 ![License](https://img.shields.io/badge/License-MIT-green)
