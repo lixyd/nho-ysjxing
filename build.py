@@ -150,7 +150,7 @@ def copy_runtime_files():
     else:
         print(f"⚠ data/ 不存在，跳过")
 
-    # 复制 assets/ 目录 (图标)
+    # 复制 assets/ 目录 (icon.ico / icon.png / logo.png / donate.jpg)
     src_assets = "assets"
     dst_assets = os.path.join(DIST_DIR, "assets")
     if os.path.exists(src_assets):

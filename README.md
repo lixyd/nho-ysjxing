@@ -125,6 +125,7 @@ data/aram_runes.json     # 全英雄 ARAM 符文（perk ID 已对齐 DDragon）
 data/settings.json       # 开关持久化
 data/hero_augments.csv   # 海克斯胜率库
 build.py                 # Windows PyInstaller 一键打包
+assets/                  # icon.ico / icon.png / logo.png / donate.jpg
 ```
 
 ### 已实现的 LCU 端点（匹配相关）
@@ -153,6 +154,13 @@ build.py                 # Windows PyInstaller 一键打包
 5. 遮罩金色=最优，绿色=可选，红色=未识别/无数据
 
 ---
+
+
+---
+
+## 💛 打赏支持
+
+若本工具对你有帮助，可在 GUI 标题栏或底部点击金色 **「打赏」** 按钮，扫码支持作者（纯属自愿）。相关图片位于 `assets/donate.jpg`，打包时会随 `assets/` 一并打入安装包。
 
 ## 📄 License 与致谢
 

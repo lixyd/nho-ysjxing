@@ -364,7 +364,15 @@ class TrayManager:
         self._thread = None
 
     def _create_tray_image(self):
-        """程序化创建托盘图标 (蓝色六边形)"""
+        """托盘图标: 优先 assets/icon.png，否则程序化金色六边形"""
+        icon_png = os.path.join(BASE_DIR, "assets", "icon.png")
+        if os.path.exists(icon_png):
+            try:
+                img = Image.open(icon_png).convert("RGBA")
+                img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                return img
+            except Exception:
+                pass
         size = 64
         img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
@@ -374,14 +382,13 @@ class TrayManager:
         for i in range(6):
             angle = math.radians(60 * i - 30)
             points.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
-        draw.polygon(points, fill=(13, 17, 23, 255), outline=(88, 166, 255, 255))
-        # 内部小六边形
+        draw.polygon(points, fill=(10, 14, 23, 255), outline=(200, 170, 110, 255))
         r2 = r * 0.55
         inner = []
         for i in range(6):
             angle = math.radians(60 * i - 30)
             inner.append((cx + r2 * math.cos(angle), cy + r2 * math.sin(angle)))
-        draw.polygon(inner, fill=(88, 166, 255, 200))
+        draw.polygon(inner, fill=(200, 155, 60, 220))
         return img
 
     def start(self):
@@ -441,8 +448,18 @@ class UpdateDialog:
 
         # 设置图标
         icon_path = os.path.join(BASE_DIR, 'assets', 'icon.ico')
-        if os.path.exists(icon_path):
-            self.dlg.iconbitmap(icon_path)
+        png_path = os.path.join(BASE_DIR, 'assets', 'icon.png')
+        try:
+            if os.path.exists(icon_path) and os.name == "nt":
+                self.dlg.iconbitmap(icon_path)
+        except Exception:
+            pass
+        try:
+            if os.path.exists(png_path):
+                self._dlg_icon = tk.PhotoImage(file=png_path)
+                self.dlg.iconphoto(True, self._dlg_icon)
+        except Exception:
+            pass
 
         self._build_ui()
 
@@ -459,6 +476,425 @@ class UpdateDialog:
         self.dlg.resizable(False, False)
 
     def _build_ui(self):
+        main = tk.Frame(self.dlg, bg=self.BG, padx=24, pady=20)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        # 标题
+        tk.Label(main, text="选择更新方式", font=("Microsoft YaHei", 16, "bold"),
+                 fg=self.TEXT, bg=self.BG).pack(anchor="w", pady=(0, 4))
+
+        # ---- 爬虫选项区 ----
+        tk.Label(main, text="🌐 本地爬虫更新 (需要 Chrome 浏览器)",
+                 font=("Microsoft YaHei", 9), fg=self.WARNING,
+                 bg=self.BG).pack(anchor="w", pady=(8, 6))
+
+        self._option_row(main,
+            icon="🔍", title="抽样校验", tag="推荐",
+            desc="随机3英雄比对，有差异自动全量更新",
+            command=lambda: self._select('spot_check'))
+
+        self._option_row(main,
+            icon="🧠", title="智能增量", tag=None,
+            desc="自动爬取新英雄 + 改名英雄 + 缺失英雄",
+            command=lambda: self._select('smart'))
+
+        self._option_row(main,
+            icon="🔄", title="全量更新", tag=None,
+            desc="强制重爬所有英雄，耗时较长",
+            command=lambda: self._select('full'))
+
+        self._option_row(main,
+            icon="🎯", title="精确更新", tag=None,
+            desc="手动指定英雄名称进行更新",
+            command=self._precise_input)
+
+        # ---- 分隔线 ----
+        sep_frame = tk.Frame(main, bg=self.BG, pady=8)
+        sep_frame.pack(fill=tk.X)
+        tk.Frame(sep_frame, bg=self.BORDER, height=1).pack(fill=tk.X)
+
+        # ---- GitHub 下载 ----
+        tk.Label(main, text="📦 在线下载 (无需浏览器)",
+                 font=("Microsoft YaHei", 9), fg=self.TEXT_DIM,
+                 bg=self.BG).pack(anchor="w", pady=(0, 6))
+
+        self._option_row(main,
+            icon="📥", title="GitHub 下载", tag=None,
+            desc="从仓库下载预处理数据 (取决于仓库更新时间)",
+            command=lambda: self._select('github'))
+
+        # ---- 底部: 帮助按钮 ----
+        bottom = tk.Frame(main, bg=self.BG)
+        bottom.pack(fill=tk.X, pady=(8, 0))
+
+        help_btn = tk.Label(bottom, text=" ？", font=("Microsoft YaHei", 12, "bold"),
+                            fg=self.TEXT_DIM, bg=self.BG, cursor="hand2",
+                            width=3, relief=tk.FLAT,
+                            highlightbackground=self.BORDER, highlightthickness=1)
+        help_btn.pack(side=tk.RIGHT)
+        help_btn.bind("<Enter>", lambda e: help_btn.config(fg=self.ACCENT))
+        help_btn.bind("<Leave>", lambda e: help_btn.config(fg=self.TEXT_DIM))
+        help_btn.bind("<Button-1>", lambda e: self._show_help())
+
+    def _option_row(self, parent, icon, title, tag, desc, command):
+        """创建一个可点击的选项行"""
+        row = tk.Frame(parent, bg=self.BG_CARD, cursor="hand2",
+                       highlightbackground=self.BORDER, highlightthickness=1)
+        row.pack(fill=tk.X, pady=(0, 6))
+
+        inner = tk.Frame(row, bg=self.BG_CARD, padx=14, pady=10)
+        inner.pack(fill=tk.X)
+
+        # 标题行
+        title_row = tk.Frame(inner, bg=self.BG_CARD)
+        title_row.pack(fill=tk.X)
+
+        tk.Label(title_row, text=f"{icon}  {title}",
+                 font=("Microsoft YaHei", 11, "bold"),
+                 fg=self.TEXT, bg=self.BG_CARD).pack(side=tk.LEFT)
+
+        if tag:
+            tag_frame = tk.Frame(title_row, bg=self.ACCENT, padx=6, pady=1)
+            tag_frame.pack(side=tk.RIGHT)
+            tk.Label(tag_frame, text=tag, font=("Microsoft YaHei", 8),
+                     fg="white", bg=self.ACCENT).pack()
+
+        # 描述
+        tk.Label(inner, text=desc, font=("Microsoft YaHei", 9),
+                 fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w").pack(fill=tk.X, pady=(2, 0))
+
+        # 绑定点击事件到所有子组件
+        def _on_enter(e):
+            row.config(highlightbackground=self.ACCENT)
+        def _on_leave(e):
+            row.config(highlightbackground=self.BORDER)
+        def _on_click(e):
+            command()
+
+        for widget in [row, inner, title_row] + list(inner.winfo_children()) + list(title_row.winfo_children()):
+            widget.bind("<Enter>", _on_enter)
+            widget.bind("<Leave>", _on_leave)
+            widget.bind("<Button-1>", _on_click)
+
+    def _select(self, mode):
+        """选择更新模式并关闭对话框"""
+        self.dlg.destroy()
+        self.app._run_update(mode)
+
+    def _precise_input(self):
+        """精确更新: 弹出输入框"""
+        input_dlg = tk.Toplevel(self.dlg)
+        input_dlg.title("精确更新 - 输入英雄名")
+        input_dlg.geometry("360x150")
+        input_dlg.resizable(False, False)
+        input_dlg.configure(bg=self.BG)
+        input_dlg.transient(self.dlg)
+        input_dlg.grab_set()
+
+        frame = tk.Frame(input_dlg, bg=self.BG, padx=20, pady=16)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(frame, text="输入英雄名称 (多个用逗号分隔)",
+                 font=("Microsoft YaHei", 10), fg=self.TEXT,
+                 bg=self.BG).pack(anchor="w", pady=(0, 8))
+
+        entry = tk.Entry(frame, font=("Microsoft YaHei", 11),
+                         bg=self.BG_CARD, fg=self.TEXT,
+                         insertbackground=self.TEXT,
+                         highlightbackground=self.BORDER,
+                         highlightthickness=1, relief=tk.FLAT, borderwidth=6)
+        entry.pack(fill=tk.X, pady=(0, 12))
+        entry.focus_set()
+
+        def _submit():
+            names = [n.strip() for n in entry.get().split(",") if n.strip()]
+            if names:
+                input_dlg.destroy()
+                self.dlg.destroy()
+                self.app._run_update('precise', hero_names=names)
+
+        entry.bind("<Return>", lambda e: _submit())
+
+        ttk.Button(frame, text="开始更新", style='Accent.TButton',
+                   command=_submit).pack(fill=tk.X)
+
+    def _show_help(self):
+        """显示帮助信息"""
+        help_text = (
+            "📖 更新方式说明\n\n"
+            "━━ 本地爬虫 (需要 Chrome) ━━\n\n"
+            "🔍 抽样校验 [推荐]\n"
+            "  从所有英雄中随机选取3个，爬取最新数据与本地\n"
+            "  比对。如果发现差异，自动触发全量更新。\n"
+            "  适合游戏版本更新后快速检测数据是否过期。\n\n"
+            "🧠 智能增量\n"
+            "  自动检测并爬取: 新出的英雄、近期改名的英雄、\n"
+            "  以及本地缺失数据的英雄。不会重复爬取已有数据。\n\n"
+            "🔄 全量更新\n"
+            "  强制重新爬取全部英雄的海克斯数据。\n"
+            "  耗时较长 (约10-20分钟)，适合数据严重过期时使用。\n\n"
+            "🎯 精确更新\n"
+            "  手动输入英雄名称 (支持中文名/英文名)，\n"
+            "  仅更新指定英雄的数据。\n\n"
+            "━━ 在线下载 (无需 Chrome) ━━\n\n"
+            "📥 GitHub 下载\n"
+            "  从项目仓库直接下载预处理好的数据文件。\n"
+            "  ⚠ 注意: 仓库数据由开发者手动更新推送，\n"
+            "  时效性不一定能保证。如果需要最新数据，\n"
+            "  建议优先使用爬虫方式。"
+        )
+        messagebox.showinfo("更新方式说明", help_text, parent=self.dlg)
+
+# ================= 主 GUI 应用 =================
+
+class LauncherApp:
+    """nho有手就行 - 主界面"""
+
+    # 配色方案 (引用统一主题)
+    BG          = Theme.BG
+    BG_CARD     = Theme.BG_CARD
+    BG_INPUT    = Theme.BG_INPUT
+    ACCENT      = Theme.ACCENT
+    ACCENT_HVR  = Theme.ACCENT_HVR
+    SUCCESS     = Theme.SUCCESS
+    WARNING     = Theme.WARNING
+    ERROR       = Theme.ERROR
+    TEXT        = Theme.TEXT
+    TEXT_DIM    = Theme.TEXT_DIM
+    BORDER      = Theme.BORDER
+    ACCENT_DIM  = Theme.ACCENT_DIM
+    BG_SEG      = Theme.BG_SEG
+    GOLD_GLOW   = Theme.GOLD_GLOW
+
+    FONT_TITLE  = ("Microsoft YaHei", 18, "bold")
+    FONT_SUB    = ("Microsoft YaHei", 10)
+    FONT_HERO   = ("Microsoft YaHei", 22, "bold")
+    FONT_STATUS = ("Microsoft YaHei", 11)
+    FONT_BTN    = ("Microsoft YaHei", 11, "bold")
+    FONT_LOG    = ("Consolas", 9)
+
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("nho有手就行 · 海克斯 / 匹配 / 符文")
+        self.root.geometry("560x780")
+        self.root.minsize(520, 700)
+        self.root.configure(bg=self.BG)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # 设置窗口图标 (Windows .ico + 跨平台 PNG)
+        self._set_window_icon(self.root)
+
+        # ttk 主题
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self._configure_styles()
+
+        # 状态变量
+        self.engine_running = False
+        self.controller = None
+        self.overlay = None
+        self.overlay_window = None
+        self.dm = None
+        self.analyzer = None
+        self.lcu = None
+        self.tray = TrayManager(self)
+        self.settings = self._load_settings()
+        self.rune_service = RuneService()
+        self._toggle_vars = {}
+
+        # 通信队列
+        self.overlay_queue = queue.Queue()
+        self.gui_queue = queue.Queue()
+        self.log_queue = queue.Queue()
+
+        # UI 变量
+        self.hero_var = tk.StringVar(value="—")
+        self.status_var = tk.StringVar(value="等待启动")
+        self.countdown_var = tk.StringVar(value="")
+        self.status_color = self.TEXT_DIM
+        self._pulse_state = 0
+        self._logo_photo = None  # keep PhotoImage refs
+        self._icon_photo = None
+
+        # 重定向日志
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+        sys.stdout = LogRedirector(self.log_queue, self._orig_stdout)
+        sys.stderr = LogRedirector(self.log_queue, self._orig_stderr)
+
+        # 构建 UI
+        self._build_ui()
+
+        # 启动队列轮询
+        self.root.after(100, self._poll_queues)
+
+        # 启动时加载数据
+        self.root.after(300, self._load_data)
+
+    # ==========================================
+    # ttk 样式配置
+    # ==========================================
+
+    def _configure_styles(self):
+        s = self.style
+
+        # 主按钮 (蓝色)
+        s.configure('Accent.TButton',
+                     background=self.ACCENT,
+                     foreground='#0a0e17',
+                     font=self.FONT_BTN,
+                     padding=(16, 10),
+                     borderwidth=0)
+        s.map('Accent.TButton',
+              background=[('active', self.ACCENT_HVR), ('disabled', self.BORDER)])
+
+        # 金色打赏按钮
+        s.configure('Donate.TButton',
+                     background=self.GOLD_GLOW,
+                     foreground='#0a0e17',
+                     font=self.FONT_BTN,
+                     padding=(12, 6),
+                     borderwidth=0)
+        s.map('Donate.TButton',
+              background=[('active', self.ACCENT_HVR), ('disabled', self.BORDER)])
+
+        # 次要按钮 (深灰)
+        s.configure('Secondary.TButton',
+                     background=self.BG_CARD,
+                     foreground=self.TEXT,
+                     font=self.FONT_BTN,
+                     padding=(12, 8),
+                     borderwidth=1)
+        s.map('Secondary.TButton',
+              background=[('active', self.BORDER), ('disabled', self.BG)])
+
+        # 停止按钮 (红色)
+        s.configure('Danger.TButton',
+                     background=self.ERROR,
+                     foreground='white',
+                     font=self.FONT_BTN,
+                     padding=(16, 10),
+                     borderwidth=0)
+        s.map('Danger.TButton',
+              background=[('active', '#da3633')])
+
+        # 链接按钮 (无背景)
+        s.configure('Link.TButton',
+                     background=self.BG,
+                     foreground=self.TEXT_DIM,
+                     font=self.FONT_SUB,
+                     padding=(8, 4),
+                     borderwidth=0)
+        s.map('Link.TButton',
+              foreground=[('active', self.ACCENT)],
+              background=[('active', self.BG)])
+
+    def _asset_path(self, *parts):
+        return os.path.join(BASE_DIR, "assets", *parts)
+
+    def _set_window_icon(self, window):
+        """Apply app icon to a Tk / Toplevel window (ico + png fallback)."""
+        ico = self._asset_path("icon.ico")
+        png = self._asset_path("icon.png")
+        logo = self._asset_path("logo.png")
+        try:
+            if os.path.exists(ico) and os.name == "nt":
+                window.iconbitmap(ico)
+            elif os.path.exists(ico):
+                try:
+                    window.iconbitmap(ico)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # iconphoto: prefer small logo/png via PhotoImage (cross-platform)
+        photo = None
+        for candidate in (logo, png):
+            if not candidate or not os.path.exists(candidate):
+                continue
+            try:
+                photo = tk.PhotoImage(file=candidate)
+                break
+            except Exception:
+                try:
+                    from PIL import Image as PILImage, ImageTk
+                    img = PILImage.open(candidate).convert("RGBA")
+                    img.thumbnail((64, 64), PILImage.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    break
+                except Exception:
+                    photo = None
+        if photo is not None:
+            try:
+                window._icon_photo_ref = photo
+                self._icon_photo = photo
+                window.iconphoto(True, photo)
+            except Exception:
+                pass
+
+    def _show_donate_dialog(self):
+        """打赏 / tip modal showing QR or tip image."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("打赏支持")
+        dlg.configure(bg=self.BG)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        self._set_window_icon(dlg)
+
+        frame = tk.Frame(dlg, bg=self.BG, padx=20, pady=16)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            frame, text="支持作者，让工具更完美",
+            font=("Microsoft YaHei", 13, "bold"),
+            fg=self.ACCENT, bg=self.BG,
+        ).pack(pady=(0, 10))
+
+        donate_path = self._asset_path("donate.jpg")
+        if not os.path.exists(donate_path):
+            donate_path = self._asset_path("donate.png")
+
+        self._donate_photo = None
+        if os.path.exists(donate_path):
+            try:
+                from PIL import Image as PILImage, ImageTk
+                img = PILImage.open(donate_path)
+                img.thumbnail((360, 360), PILImage.Resampling.LANCZOS)
+                self._donate_photo = ImageTk.PhotoImage(img)
+                tk.Label(frame, image=self._donate_photo, bg=self.BG).pack(pady=(0, 12))
+            except Exception as e:
+                tk.Label(
+                    frame, text=f"(无法加载打赏图片: {e})",
+                    font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG,
+                ).pack(pady=(0, 12))
+        else:
+            tk.Label(
+                frame, text="(未找到 assets/donate.jpg)",
+                font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG,
+            ).pack(pady=(0, 12))
+
+        tk.Label(
+            frame, text="感谢支持 · 打赏纯属自愿",
+            font=("Microsoft YaHei", 9), fg=self.TEXT_DIM, bg=self.BG,
+        ).pack(pady=(0, 10))
+
+        ttk.Button(frame, text="关闭", style="Secondary.TButton",
+                   command=dlg.destroy).pack(fill=tk.X)
+
+        dlg.update_idletasks()
+        w = max(400, dlg.winfo_reqwidth())
+        h = dlg.winfo_reqheight()
+        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_y() + max(0, (self.root.winfo_height() - h) // 2)
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+
+
+    # ==========================================
+    # 构建 UI
+    # ==========================================
+
+    def _build_ui(self):
         main = tk.Frame(self.root, bg=self.BG, padx=20, pady=14)
         main.pack(fill=tk.BOTH, expand=True)
 
@@ -466,8 +902,27 @@ class UpdateDialog:
         hdr = tk.Frame(main, bg=self.BG)
         hdr.pack(fill=tk.X, pady=(0, 12))
 
-        tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
-                 bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
+        # 小 logo（assets/logo.png），失败则回退六边形文字
+        logo_path = self._asset_path("logo.png")
+        if os.path.exists(logo_path):
+            try:
+                self._logo_photo = tk.PhotoImage(file=logo_path)
+                try:
+                    iw, ih = self._logo_photo.width(), self._logo_photo.height()
+                    if iw > 48 or ih > 48:
+                        factor = max(1, max(iw, ih) // 40)
+                        self._logo_photo = self._logo_photo.subsample(factor, factor)
+                except Exception:
+                    pass
+                tk.Label(hdr, image=self._logo_photo, bg=self.BG).pack(
+                    side=tk.LEFT, padx=(0, 12)
+                )
+            except Exception:
+                tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
+                         bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
+        else:
+            tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
+                     bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side=tk.LEFT)
@@ -475,6 +930,17 @@ class UpdateDialog:
                  font=self.FONT_TITLE, fg=self.ACCENT, bg=self.BG).pack(anchor="w")
         tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
                  font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
+
+        # 金色「打赏」按钮（header 右侧）
+        donate_btn = tk.Button(
+            hdr, text="打赏",
+            font=("Microsoft YaHei", 10, "bold"),
+            fg="#0a0e17", bg=self.GOLD_GLOW,
+            activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
+            relief=tk.FLAT, padx=14, pady=4, cursor="hand2",
+            command=self._show_donate_dialog,
+        )
+        donate_btn.pack(side=tk.RIGHT, padx=(8, 0))
 
         # 金色分隔
         tk.Frame(main, bg=self.ACCENT_DIM, height=2).pack(fill=tk.X, pady=(0, 12))
@@ -677,6 +1143,18 @@ class UpdateDialog:
         self.tray_btn = ttk.Button(btn_frame, text="最小化到系统托盘",
                                     style='Link.TButton', command=self._minimize_to_tray)
         self.tray_btn.pack()
+
+        # 底部打赏入口（金色）
+        footer = tk.Frame(btn_frame, bg=self.BG)
+        footer.pack(fill=tk.X, pady=(6, 0))
+        tk.Button(
+            footer, text="💛  打赏支持作者",
+            font=("Microsoft YaHei", 9, "bold"),
+            fg="#0a0e17", bg=self.GOLD_GLOW,
+            activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
+            relief=tk.FLAT, padx=10, pady=3, cursor="hand2",
+            command=self._show_donate_dialog,
+        ).pack()
 
         # ---- 日志面板 ----
         log_header = tk.Frame(main, bg=self.BG)
