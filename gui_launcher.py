@@ -107,6 +107,8 @@ class GUIController(threading.Thread):
         self._fast_poll_until = 0.0  # 识别英雄 / ChampSelect 后加速轮询
         self._champ_select_locked = False  # championId>0 才算锁定
         self._runes_applied_on_lock = False
+        self._hex_ingame = False  # InProgress + Live Client 后才允许 hex OCR / 显示 FAB
+        self._last_hex_gate_poll = 0.0
 
         self.matchmaking = MatchmakingService(
             lcu_connector,
@@ -170,6 +172,61 @@ class GUIController(threading.Thread):
     def _on_hex_refresh_reminder(self):
         """选项刷新 / 手动「刷新识别」后的 UI 提醒。"""
         self._gui(event="hex_refresh_reminder")
+
+    def _is_hex_ocr_allowed(self) -> bool:
+        """海克斯 OCR 硬门禁：InProgress + Live Client 真实玩家数据。"""
+        if not self.lcu:
+            return False
+        try:
+            if hasattr(self.lcu, "is_in_live_game"):
+                return bool(self.lcu.is_in_live_game())
+            if self.lcu.get_gameflow_phase() != "InProgress":
+                return False
+            return self.lcu.get_live_player_state() is not None
+        except Exception:
+            return False
+
+    def _enter_hex_session(self):
+        """对局已开：显示左上角刷新浮钮。"""
+        if self._hex_ingame:
+            return
+        self._hex_ingame = True
+        try:
+            self.overlay_queue.put({"cmd": "FAB_SHOW"})
+        except Exception:
+            pass
+        self._gui(event="log", text="🎮 已进入对局 — 可识别海克斯（右上角读秒出现后）")
+
+    def _leave_hex_session(self, reason: str = "对局结束"):
+        """离开对局：停 OCR、清遮罩推荐、隐藏 FAB。"""
+        was = self._hex_ingame
+        self._hex_ingame = False
+        try:
+            if self.auto_hex:
+                self.auto_hex.reset_match()
+        except Exception:
+            pass
+        try:
+            self.overlay_queue.put({"cmd": "CLEAR"})
+            self.overlay_queue.put({"cmd": "FAB_HIDE"})
+        except Exception:
+            pass
+        if was:
+            self._gui(event="log", text=f"⏹ {reason}，已停止海克斯识别并清空推荐")
+
+    def _sync_hex_ingame_gate(self):
+        """同步门禁（限频）：进入则亮 FAB；离开则清推荐/藏 FAB。"""
+        now = time.time()
+        # 未在局内时稍慢探测；已在局内仍要及时发现 Live 断开
+        interval = 0.5 if self._hex_ingame else 0.8
+        if now - self._last_hex_gate_poll < interval:
+            return
+        self._last_hex_gate_poll = now
+        allowed = self._is_hex_ocr_allowed()
+        if allowed:
+            self._enter_hex_session()
+        elif self._hex_ingame:
+            self._leave_hex_session("已离开对局")
 
     def _validate_hero(self, name):
         """验证英雄名是否在数据库中，尝试模糊映射"""
@@ -252,7 +309,14 @@ class GUIController(threading.Thread):
         return None
 
     def trigger_analyze(self):
-        """手动刷新识别（UI「刷新识别」按钮）"""
+        """手动刷新识别（UI「刷新识别」按钮 / 左上角 FAB）"""
+        if not self._is_hex_ocr_allowed():
+            msg = "尚未进入对局"
+            hint = "进入对局且右上角读秒出现后再识别海克斯"
+            self.overlay_queue.put({"cmd": "STATUS", "data": f"⚠ {msg}\n{hint}"})
+            self._gui(event="log", text=f"⚠ {msg} — {hint}")
+            self._gui(event="status", status="idle")
+            return False
         if not self.current_hero:
             self.overlay_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请点击识别英雄"})
             self._gui(event="status", status="no_hero_warning")
@@ -396,20 +460,25 @@ class GUIController(threading.Thread):
                 self._reset_requested = False
                 print("重置: 重新进入自动检测阶段")
                 self.current_hero = None
+                self._leave_hex_session("重置")
                 self._clear_hero_dependent_state()
                 time.sleep(0.3)
                 return  # 退出 listening_phase, 回到 auto_detect
 
-            # 阶段变化: 进入新对局时重置自动海克斯
+            # 阶段变化: 进入新对局时重置自动海克斯；结束时清推荐/藏 FAB
             try:
                 if self.lcu and self.lcu.is_connected():
                     phase = self.lcu.get_gameflow_phase()
                     if phase != self._last_phase:
                         if phase == "InProgress" and self._last_phase != "InProgress":
                             self.auto_hex.reset_match()
-                        if phase in ("EndOfGame", "WaitingForStats", "Lobby", "None"):
-                            if self._last_phase == "InProgress":
-                                self.auto_hex.reset_match()
+                        if phase in ("EndOfGame", "WaitingForStats", "Lobby", "None",
+                                     "ChampSelect", "Matchmaking", "ReadyCheck", "GameStart"):
+                            if self._last_phase == "InProgress" or self._hex_ingame:
+                                self._leave_hex_session(
+                                    "对局结束" if phase in ("EndOfGame", "WaitingForStats")
+                                    else "已离开对局"
+                                )
                         if phase == "ChampSelect":
                             self._fast_poll_until = max(self._fast_poll_until, now + 45)
                             self._champ_select_locked = False
@@ -421,6 +490,12 @@ class GUIController(threading.Thread):
                         self._last_phase = phase
             except Exception:
                 pass
+
+            # 硬门禁同步：InProgress+Live 才亮 FAB；Live 断开同样清场
+            try:
+                self._sync_hex_ingame_gate()
+            except Exception as e:
+                print(f"[hex_gate] {e}")
 
             # 周期性英雄重检：ChampSelect 未锁定更快；锁定/离选人后放慢；对局中跟上骰子
             try:
@@ -1227,7 +1302,7 @@ class LauncherApp:
 
         tk.Label(
             hex_card,
-            text="检查点未开窗先记欠账，死亡/UI 再兑现 · 选牌中持续刷新至选定 · 也可点左上角「刷新」或面板「刷新识别」",
+            text="进入对局且右上角读秒出现后再识别海克斯 · 检查点欠账→死亡/UI 兑现 · 选牌中持续刷新 · 左上角「刷新」仅对局内显示",
             font=("Microsoft YaHei", 8),
             fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
         ).pack(fill=tk.X)
@@ -1422,6 +1497,11 @@ class LauncherApp:
                 self.overlay_queue,
                 on_manual_refresh=self._manual_refresh_ocr,
             )
+            # 浮钮默认隐藏，真正进入对局（InProgress+Live）后再显示
+            try:
+                self.overlay_queue.put({"cmd": "FAB_HIDE"})
+            except Exception:
+                pass
 
             # 启动后台控制器
             self.rune_service.set_lcu(self.lcu)
@@ -1435,7 +1515,7 @@ class LauncherApp:
 
             self.engine_running = True
             self._set_status("运行中", self.SUCCESS)
-            self._log("✅ 引擎已启动! 点击「刷新识别 / 识别英雄 / 重置」；自动海克斯: 检查点欠账→死亡/UI 兑现 · 选牌中持续刷新至选定")
+            self._log("✅ 引擎已启动! 进入对局且右上角读秒出现后再识别海克斯；选人阶段仍可推荐/套用符文")
             if self.settings.get("overlay_topmost", True) and self.overlay_window:
                 try:
                     self.overlay_window.attributes("-topmost", True)

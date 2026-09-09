@@ -565,6 +565,34 @@ class LCUConnector:
     # Live Client Data: 等级 / 死亡状态
     # ==========================================
 
+    def is_in_live_game(self):
+        """
+        海克斯 OCR / 自动识别硬门禁。
+
+        仅当同时满足时返回 True:
+          1. LCU gameflow phase == "InProgress"
+             （GameStart 加载中不够——此时右上角读秒/对局 HUD 尚未出现）
+          2. Live Client Data (port 2999) 返回真实玩家数据
+
+        大厅 / 选人 / 客户端主页 / 纯桌面遮罩均返回 False。
+        """
+        try:
+            phase = self.get_gameflow_phase()
+        except Exception:
+            phase = None
+        if phase != "InProgress":
+            return False
+        state = self.get_live_player_state()
+        if not state:
+            return False
+        # 真实玩家数据：有等级或英雄名即可（避免空壳响应）
+        try:
+            level = int(state.get("level") or 0)
+        except (TypeError, ValueError):
+            level = 0
+        champ = (state.get("champion") or "").strip()
+        return level >= 1 or bool(champ)
+
     def get_live_player_state(self):
         """
         读取 Live Client Data，返回选牌相关信号:

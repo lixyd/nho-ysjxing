@@ -543,10 +543,32 @@ class OverlayApp:
             fab.bind("<Button-1>", self._on_fab_click)
             self._refresh_fab = fab
             self._fab_label = lbl
+            # 默认隐藏：未进入对局（无右上角读秒）不显示浮钮
+            try:
+                fab.withdraw()
+            except Exception:
+                pass
         except Exception as e:
             print(f"刷新浮钮创建失败: {e}")
             self._refresh_fab = None
             self._fab_label = None
+
+    def set_fab_visible(self, visible: bool):
+        """对局内显示左上角「刷新」浮钮；离开对局隐藏。"""
+        if not self._refresh_fab:
+            if visible and self.on_manual_refresh:
+                self._create_refresh_fab()
+            if not self._refresh_fab:
+                return
+        try:
+            if visible:
+                self._refresh_fab.deiconify()
+                self._refresh_fab.attributes("-topmost", True)
+                self._refresh_fab.lift()
+            else:
+                self._refresh_fab.withdraw()
+        except Exception as e:
+            print(f"刷新浮钮显隐: {e}")
 
     def _on_fab_click(self, event=None):
         if not self.on_manual_refresh:
@@ -575,10 +597,14 @@ class OverlayApp:
             pass
 
     def ensure_fab_visible(self):
-        """托盘/切窗后保持浮钮置顶可见。"""
+        """托盘/切窗后：仅当浮钮本应对局内可见时再置顶。"""
         if not self._refresh_fab:
             return
         try:
+            # withdrawn 表示未进入对局，不要强行弹出
+            state = str(self._refresh_fab.state())
+            if state == "withdrawn":
+                return
             self._refresh_fab.deiconify()
             self._refresh_fab.attributes("-topmost", True)
             self._refresh_fab.lift()
@@ -627,6 +653,10 @@ class OverlayApp:
                     self.show_status(data)
                 elif cmd == "CLEAR":
                     self.clear_display()
+                elif cmd == "FAB_SHOW":
+                    self.set_fab_visible(True)
+                elif cmd == "FAB_HIDE":
+                    self.set_fab_visible(False)
         except queue.Empty:
             pass
         finally:
@@ -833,6 +863,24 @@ class InputController(threading.Thread):
 
             if keyboard.is_pressed('f6') and now - self._last_f6 > 1.0:
                 self._last_f6 = now
+                # 硬门禁：未进入对局（InProgress + Live）不 OCR
+                in_live = False
+                try:
+                    if self.lcu and hasattr(self.lcu, "is_in_live_game"):
+                        in_live = bool(self.lcu.is_in_live_game())
+                    elif self.lcu:
+                        in_live = (
+                            self.lcu.get_gameflow_phase() == "InProgress"
+                            and self.lcu.get_live_player_state() is not None
+                        )
+                except Exception:
+                    in_live = False
+                if not in_live:
+                    self.queue.put({
+                        "cmd": "STATUS",
+                        "data": "⚠ 尚未进入对局\n进入对局且右上角读秒出现后再识别海克斯",
+                    })
+                    continue
                 if not self.current_hero:
                     self.queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请按 F7 自动获取或 F8 手动输入"})
                     continue

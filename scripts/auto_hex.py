@@ -1,7 +1,12 @@
 """
 海克斯自动识别调度器
 
-触发信号（泉水/选牌窗口代理 + 等级检查点）:
+硬门禁（必须先满足，否则 tick 完全空转，不截图、不 OCR）:
+  - LCU gameflow phase == InProgress（GameStart 加载中不够）
+  - 且 Live Client Data 返回真实玩家数据
+  - 等价于「已进入对局且右上角读秒出现」；大厅/选人/客户端主页绝不识别
+
+触发信号（泉水/选牌窗口代理 + 等级检查点；均在硬门禁之后）:
   1. Live Client `isDead`（死亡后回泉水选牌；客户端不提供地图 XY，无法直接判定靠近泉水）
   2. Live Client 等级跨过检查点 1 / 7 / 11 / 15
   3. 现有 hex OCR 区域扫到疑似海克斯 UI 文字（能选牌的界面）
@@ -164,8 +169,22 @@ class AutoHexWatcher:
             pass
         self._death_cycle_fired = True
 
+    def _gate_in_live_game(self) -> bool:
+        """InProgress + Live Client 真实玩家数据；否则禁止一切 hex OCR。"""
+        if not self.lcu:
+            return False
+        try:
+            if hasattr(self.lcu, "is_in_live_game"):
+                return bool(self.lcu.is_in_live_game())
+            phase = self.lcu.get_gameflow_phase()
+            if phase != "InProgress":
+                return False
+            return self.lcu.get_live_player_state() is not None
+        except Exception:
+            return False
+
     def tick(self):
-        """由控制器主循环频繁调用。"""
+        """由控制器主循环频繁调用。未进入对局时完全 no-op（不截图、不 OCR）。"""
         if not self.enabled:
             return
 
@@ -174,10 +193,18 @@ class AutoHexWatcher:
             return
         self._last_poll = now
 
+        # 硬门禁：大厅 / ChampSelect / GameStart / Live 未就绪 → 空转
+        if not self._gate_in_live_game():
+            if self._in_game:
+                self.reset_match()
+                self._status("⏹ 已离开对局，停止海克斯识别")
+            return
+
         state = self.lcu.get_live_player_state() if self.lcu else None
         if not state:
             if self._in_game:
                 self.reset_match()
+                self._status("⏹ Live Client 已断开，停止海克斯识别")
             return
 
         self._in_game = True
@@ -453,6 +480,9 @@ class AutoHexWatcher:
 
     def notify_manual_refresh(self, results: Optional[dict] = None):
         """手动刷新后：更新 OCR 快照基线，并提示「刷新后已更新推荐」。"""
+        if not self._gate_in_live_game():
+            self._status("⚠ 尚未进入对局 — 进入对局且右上角读秒出现后再识别海克斯")
+            return
         snap, ui = self._snapshot_options()
         if ui and snap:
             self._last_option_snapshot = snap
