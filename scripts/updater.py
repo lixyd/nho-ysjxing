@@ -24,7 +24,7 @@ except ImportError:
     from config import DATA_DIR, CHAMPION_ID_FILE, PINYIN_FILE, CSV_FILE
 
 # GitHub 仓库地址 (用于在线下载)
-GITHUB_RAW_BASE  = "https://raw.githubusercontent.com/Nyx0ra/lol-aram-mayhem-hextech-helper/main"
+GITHUB_RAW_BASE  = "https://raw.githubusercontent.com/lixyd/nho-ysjxing/main"
 
 CSV_HEADER       =["中文名", "英文名", "等级", "总排名", "等级内序号", "海克斯名称"]
 

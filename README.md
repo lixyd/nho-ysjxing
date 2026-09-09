@@ -190,14 +190,34 @@ assets/                  # icon.ico / icon.png / logo.png / donate.jpg
 
 ---
 
+## 📦 数据更新
+
+海克斯 / 英雄映射等可在应用内点 **「📦 数据更新」**；符文库 `data/aram_runes.json` 可用：
+
+```bash
+# 需本机有 u.gg-aram 提取包，或由 CI 脚本拉取依赖后：
+python scripts/build_aram_runes.py
+```
+
+也可在 GitHub Actions 手动 / 定时跑 **Update ARAM Runes**（`.github/workflows/update-aram-runes.yml`，每周一 03:00 UTC）。
+
+## 以后怎么更新
+
+| 动作 | 做法 |
+|------|------|
+| 日常代码 | push 到 `main`（私有仓库保持 private） |
+| Windows 安装包 | 打 `v*` tag → **Build Windows** 发 Release；或 Actions 里手动 Run workflow 下 Artifacts |
+| 符文库 | 应用内「数据更新」；或 `python scripts/build_aram_runes.py`；或每周 **Update ARAM Runes** Action |
+| 海克斯胜率等 | GUI「数据更新」全量/增量/GitHub 下载 |
+
+---
+
 ## 💛 打赏支持
 
-若本工具对你有帮助，可在 GUI 标题栏或底部点击金色 **「打赏」** 按钮，扫码支持作者（纯属自愿）。相关图片位于 `assets/donate.jpg`，打包时会随 `assets/` 一并打入安装包。
+若本工具对你有帮助，可点 GUI 右上角 **「💛 打赏」** 或主按钮下方金色条 **「💛 打赏支持 · 扫码自愿」**，扫码支持（纯属自愿）。图片：`assets/donate.jpg`（打包随 `assets/` 打入）。
 
 ## 📄 License 与致谢
 
-MIT License。
+MIT License（**nho有手就行** / `lixyd/nho-ysjxing`）。
 
-本仓库基于 [Nyx0ra/lol-aram-mayhem-hextech-helper](https://github.com/Nyx0ra/lol-aram-mayhem-hextech-helper)（MIT，Copyright © Nyx0ra）演进。请保留原作者归属。
-
-符文页统计来自对局数据集并经 Riot Data Dragon 最新 perk ID 校验；欢迎按英雄继续完善 `data/aram_runes.json`。
+符文推荐来自对局统计数据集，并经 Riot Data Dragon 最新 perk ID 校验 / 映射；欢迎 PR 完善 `data/aram_runes.json`。

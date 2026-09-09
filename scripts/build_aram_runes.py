@@ -1,9 +1,29 @@
 import json, os, copy, urllib.request
-ROOT = "/workspace/aram-helper/lol-aram-mayhem-hextech-helper"
-UGG = "/workspace/aram-helper/ugg-extract/package"
-PERKSTYLES = "/workspace/aram-helper/perkstyles_14.22.json"
-DDRAGON = "/workspace/aram-helper/champion_en.json"
-OUT = ROOT + "/data/aram_runes.json"
+from datetime import date
+
+# Repo-relative paths; override with ARAM_* env vars (CI sets these after fetching deps).
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.environ.get("ARAM_ROOT", os.path.dirname(_SCRIPT_DIR))
+UGG = os.environ.get("ARAM_UGG_DIR", os.path.join(ROOT, ".cache", "ugg-aram", "package"))
+if not os.path.isdir(UGG):
+    _sib = os.path.normpath(os.path.join(ROOT, "..", "ugg-extract", "package"))
+    if os.path.isdir(_sib):
+        UGG = _sib
+PERKSTYLES = os.environ.get("ARAM_PERKSTYLES", os.path.join(ROOT, ".cache", "perkstyles.json"))
+if not os.path.isfile(PERKSTYLES):
+    _sib_ps = os.path.normpath(os.path.join(ROOT, "..", "perkstyles_14.22.json"))
+    if os.path.isfile(_sib_ps):
+        PERKSTYLES = _sib_ps
+DDRAGON = os.environ.get("ARAM_DDRAGON_CHAMP", os.path.join(ROOT, ".cache", "champion_en.json"))
+if not os.path.isfile(DDRAGON):
+    _sib_dd = os.path.normpath(os.path.join(ROOT, "..", "champion_en.json"))
+    if os.path.isfile(_sib_dd):
+        DDRAGON = _sib_dd
+OUT = os.path.join(ROOT, "data", "aram_runes.json")
+if not os.path.isdir(UGG):
+    raise SystemExit("Missing u.gg-aram package at %s (set ARAM_UGG_DIR)" % UGG)
+if not os.path.isfile(DDRAGON):
+    raise SystemExit("Missing champion.json at %s (set ARAM_DDRAGON_CHAMP)" % DDRAGON)
 
 # Obsolete perk IDs -> current Data Dragon equivalents (validated against latest runesReforged)
 PERK_REMAP = {
@@ -61,17 +81,18 @@ TAG_TO_ROLE = {"Mage": "mage", "Marksman": "marksman", "Fighter": "fighter", "Ta
 def norm(s):
     return "".join(c for c in s if c.isalnum()).lower()
 
-cn_to_en = json.load(open(ROOT + "/data/champions.json", encoding="utf-8"))
+cn_to_en = json.load(open(os.path.join(ROOT, "data", "champions.json"), encoding="utf-8"))
 ugg_idx = {}
 for fn in os.listdir(UGG):
     if fn.endswith(".json") and fn not in ("index.json", "package.json"):
         ugg_idx[norm(fn[:-5])] = fn[:-5]
 
 style_slots = {}
-ps = json.load(open(PERKSTYLES))
-for style in ps["styles"]:
-    sid = int(style["id"])
-    style_slots[sid] = [[int(x) for x in slot.get("perks") or []] for slot in (style.get("slots") or [])[:4]]
+if PERKSTYLES and os.path.isfile(PERKSTYLES):
+    ps = json.load(open(PERKSTYLES, encoding="utf-8"))
+    for style in ps["styles"]:
+        sid = int(style["id"])
+        style_slots[sid] = [[int(x) for x in slot.get("perks") or []] for slot in (style.get("slots") or [])[:4]]
 
 # Overlay with latest Data Dragon slot layouts (authoritative perk IDs)
 dd_ver, dd_styles = fetch_latest_ddragon_runes()
@@ -82,7 +103,7 @@ for style in dd_styles:
 print("Data Dragon", dd_ver, "valid runes+shards", len(valid_ids))
 
 en_tags = {}
-dd = json.load(open(DDRAGON))
+dd = json.load(open(DDRAGON, encoding="utf-8"))
 for cid, info in dd["data"].items():
     en_tags[norm(cid)] = list(info.get("tags") or [])
 
@@ -208,7 +229,7 @@ out = {
         "source": "@champ-r/u.gg-aram + Riot Data Dragon",
         "sourceVersion": "14.22.1-v1731961059465",
         "ddragonVersion": dd_ver,
-        "built": "2026-09-09",
+        "built": date.today().isoformat(),
         "stats": stats,
         "perkRemaps": {str(k): v for k, v in PERK_REMAP.items()},
         "style_ids": {"精密": 8000, "主宰": 8100, "巫术": 8200, "坚决": 8400, "启迪": 8300},

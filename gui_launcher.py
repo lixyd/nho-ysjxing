@@ -209,6 +209,8 @@ class GUIController(threading.Thread):
         try:
             self.overlay_queue.put({"cmd": "CLEAR"})
             self.overlay_queue.put({"cmd": "FAB_HIDE"})
+            self.overlay_queue.put({"cmd": "RUNE_STRIP", "data": ""})
+            self.overlay_queue.put({"cmd": "ITEM_STRIP", "data": ""})
         except Exception:
             pass
         if was:
@@ -284,6 +286,7 @@ class GUIController(threading.Thread):
             except Exception:
                 pass
         self._gui(event="rune_info", text="", hero=self.current_hero)
+        self._push_rune_strip(None)
 
     def _forget_match_hero(self, reason: str = "", *, force_ui: bool = False):
         """局间清理：丢掉上场英雄，强制下一轮重新识别（不需重启/手动重置）。"""
@@ -402,12 +405,29 @@ class GUIController(threading.Thread):
         self._gui(event="log", text=msg)
         return ok, msg
 
+    def _push_rune_strip(self, hero=None):
+        """Update click-through overlay strip from RuneService.recommend."""
+        try:
+            if not hero:
+                self.overlay_queue.put({"cmd": "RUNE_STRIP", "data": ""})
+                self.overlay_queue.put({"cmd": "ITEM_STRIP", "data": ""})
+                return
+            page, _src = self.rune_service.recommend(hero)
+            line = self.rune_service.format_strip_line(page)
+            self.overlay_queue.put({"cmd": "RUNE_STRIP", "data": line})
+            # Items: no data/aram_items.json yet — keep strip cleared (do not fake).
+            self.overlay_queue.put({"cmd": "ITEM_STRIP", "data": ""})
+        except Exception as e:
+            print(f"rune strip push: {e}")
+
     def _maybe_show_runes(self, hero, *, apply=None):
+
         """刷新符文展示；apply 默认跟随 auto_apply_runes 设置。"""
         page, source = self.rune_service.recommend(hero)
         summary = self.rune_service.format_summary(page, source)
         print(summary)
         self._gui(event="rune_info", text=summary, hero=hero)
+        self._push_rune_strip(hero)
         do_apply = self.settings.get("auto_apply_runes") if apply is None else apply
         if do_apply:
             ok, msg = self.rune_service.apply(page)
@@ -1174,16 +1194,22 @@ class LauncherApp:
         tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
                  font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
 
-        # 金色「打赏」按钮（header 右侧）
+        # 金色「打赏」按钮（header 右侧，更醒目）
         donate_btn = tk.Button(
-            hdr, text="打赏",
-            font=("Microsoft YaHei", 10, "bold"),
+            hdr, text="💛 打赏",
+            font=("Microsoft YaHei", 12, "bold"),
             fg="#0a0e17", bg=self.GOLD_GLOW,
             activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
-            relief=tk.FLAT, padx=14, pady=4, cursor="hand2",
+            relief=tk.FLAT, padx=18, pady=8, cursor="hand2",
             command=self._show_donate_dialog,
         )
         donate_btn.pack(side=tk.RIGHT, padx=(8, 0))
+
+        # 标题下短提示（一次）
+        tk.Label(
+            title_frame, text="喜欢就点右上角打赏",
+            font=("Microsoft YaHei", 9), fg=self.GOLD_GLOW, bg=self.BG,
+        ).pack(anchor="w", pady=(2, 0))
 
         # 金色分隔
         tk.Frame(main, bg=self.ACCENT_DIM, height=2).pack(fill=tk.X, pady=(0, 12))
@@ -1396,17 +1422,17 @@ class LauncherApp:
                                     style='Link.TButton', command=self._minimize_to_tray)
         self.tray_btn.pack()
 
-        # 底部打赏入口（金色）
+        # 底部打赏入口（全宽金色条，紧挨主操作按钮下方、日志上方）
         footer = tk.Frame(btn_frame, bg=self.BG)
-        footer.pack(fill=tk.X, pady=(6, 0))
+        footer.pack(fill=tk.X, pady=(10, 2))
         tk.Button(
-            footer, text="💛  打赏支持作者",
-            font=("Microsoft YaHei", 9, "bold"),
+            footer, text="💛 打赏支持 · 扫码自愿",
+            font=("Microsoft YaHei", 12, "bold"),
             fg="#0a0e17", bg=self.GOLD_GLOW,
             activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
-            relief=tk.FLAT, padx=10, pady=3, cursor="hand2",
+            relief=tk.FLAT, padx=12, pady=10, cursor="hand2",
             command=self._show_donate_dialog,
-        ).pack()
+        ).pack(fill=tk.X)
 
         # ---- 日志面板 ----
         log_header = tk.Frame(main, bg=self.BG)
