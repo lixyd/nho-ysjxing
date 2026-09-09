@@ -94,7 +94,21 @@ class RuneService:
             }
         return page, "通用默认"
 
+    def format_strip_line(self, page: Dict[str, Any]) -> str:
+        """Compact one-line overlay text, e.g. 符文: 巫术·奥术彗星 / 主宰"""
+        if not page:
+            return ""
+        primary = str(page.get("primary_cn") or "").replace(" ", "")
+        secondary = str(page.get("secondary_cn") or "").replace(" ", "")
+        if not primary and not secondary:
+            name = page.get("name") or ""
+            return f"符文: {name}" if name else ""
+        if primary and secondary:
+            return f"符文: {primary} / {secondary}"
+        return f"符文: {primary or secondary}"
+
     def format_summary(self, page: Dict[str, Any], source: str = "") -> str:
+
         primary = page.get("primary_cn") or f"主系 {page.get('primaryStyleId')}"
         secondary = page.get("secondary_cn") or f"副系 {page.get('subStyleId')}"
         name = page.get("name") or "推荐符文"

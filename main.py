@@ -490,6 +490,8 @@ class OverlayApp:
         self.on_manual_refresh = on_manual_refresh
         self._refresh_fab = None
         self._fab_label = None
+        self._rune_strip_label = None  # click-through text on main overlay
+        self._item_strip_label = None  # reserved; no item data yet
         
         # 先隐藏窗口，避免配置透明前闪白框
         self.root.withdraw()
@@ -596,6 +598,50 @@ class OverlayApp:
         except Exception:
             pass
 
+    def _strip_origin(self):
+        """Top-left just right of FAB (FAB ~80px wide at +12,+12)."""
+        ox = getattr(self, "offset_x", 0) + 100
+        oy = getattr(self, "offset_y", 0) + 16
+        return ox, oy
+
+    def set_rune_strip(self, text: str):
+        """Show/hide click-through rune recommendation line near FAB."""
+        lbl = self._rune_strip_label
+        if lbl is None:
+            return
+        try:
+            text = (text or "").strip()
+            if not text:
+                lbl.place_forget()
+                return
+            ox, oy = self._strip_origin()
+            lbl.config(text=text, fg="#f0c75e")
+            # absolute screen coords relative to fullscreen overlay
+            lbl.place(x=ox - getattr(self, "offset_x", 0), y=oy - getattr(self, "offset_y", 0))
+            lbl.lift()
+        except Exception as e:
+            print(f"rune strip: {e}")
+
+    def set_item_strip(self, text: str):
+        """Optional item line under runes; hidden when empty (no data yet)."""
+        lbl = self._item_strip_label
+        if lbl is None:
+            return
+        try:
+            text = (text or "").strip()
+            if not text:
+                lbl.place_forget()
+                return
+            ox, oy = self._strip_origin()
+            lbl.config(text=text)
+            lbl.place(
+                x=ox - getattr(self, "offset_x", 0),
+                y=oy - getattr(self, "offset_y", 0) + 22,
+            )
+            lbl.lift()
+        except Exception as e:
+            print(f"item strip: {e}")
+
     def ensure_fab_visible(self):
         """托盘/切窗后：仅当浮钮本应对局内可见时再置顶。"""
         if not self._refresh_fab:
@@ -639,6 +685,27 @@ class OverlayApp:
             lbl = tk.Label(self.root, text="", font=font_style, bg=COLORS["bg"], justify="left")
             self.labels[key] = lbl
 
+        # Top strip next to FAB: rune names (mouse-penetrating via main overlay)
+        self._rune_strip_label = tk.Label(
+            self.root,
+            text="",
+            font=("Microsoft YaHei", 10, "bold"),
+            fg="#f0c75e",
+            bg=COLORS["bg"],
+            justify="left",
+            anchor="w",
+        )
+        # Items stub hidden until data/aram_items.json exists
+        self._item_strip_label = tk.Label(
+            self.root,
+            text="",
+            font=("Microsoft YaHei", 9),
+            fg="#a89b7c",
+            bg=COLORS["bg"],
+            justify="left",
+            anchor="w",
+        )
+
     def process_queue(self):
         """主线程轮询：处理来自后台线程的指令"""
         try:
@@ -653,10 +720,17 @@ class OverlayApp:
                     self.show_status(data)
                 elif cmd == "CLEAR":
                     self.clear_display()
+                    # Do not auto-clear rune strip here — hex CLEAR fires often.
+                    # Engine sends RUNE_STRIP "" / ITEM_STRIP "" when hero/match clears.
                 elif cmd == "FAB_SHOW":
                     self.set_fab_visible(True)
                 elif cmd == "FAB_HIDE":
                     self.set_fab_visible(False)
+                elif cmd == "RUNE_STRIP":
+                    self.set_rune_strip(data if isinstance(data, str) else (data or ""))
+                elif cmd == "ITEM_STRIP":
+                    # Reserved: show only when non-empty (no fake item data)
+                    self.set_item_strip(data if isinstance(data, str) else (data or ""))
         except queue.Empty:
             pass
         finally:
