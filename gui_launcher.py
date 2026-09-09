@@ -127,6 +127,7 @@ class GUIController(threading.Thread):
             get_hero=lambda: self.current_hero,
             on_results=self._on_hex_results,
             on_status=lambda m: self.gui_queue.put({"event": "log", "text": m}),
+            on_refresh_reminder=self._on_hex_refresh_reminder,
             enabled=self.settings.get("auto_hex", True),
         )
 
@@ -164,6 +165,10 @@ class GUIController(threading.Thread):
     def _on_hex_results(self, results):
         self.overlay_queue.put({"cmd": "UPDATE", "data": results})
         self._gui(event="status", status="analyzed", hero=self.current_hero)
+
+    def _on_hex_refresh_reminder(self):
+        """选项刷新 / 手动 F6 后的 UI 提醒。"""
+        self._gui(event="hex_refresh_reminder")
 
     def _validate_hero(self, name):
         """验证英雄名是否在数据库中，尝试模糊映射"""
@@ -228,7 +233,7 @@ class GUIController(threading.Thread):
         self._gui(event="status", status="analyzed", hero=self.current_hero)
         print(f"分析完成: {self.current_hero}")
         if self.auto_hex:
-            self.auto_hex.notify_manual_refresh()
+            self.auto_hex.notify_manual_refresh(results or {})
             self.auto_hex.mark_ui_gone_if_needed(results or {})
         return True
 
@@ -1118,10 +1123,19 @@ class LauncherApp:
 
         tk.Label(
             hex_card,
-            text="等级 1 / 7 / 11 / 15 检查点自动 OCR；也可按 F6",
+            text="死亡/泉水选牌 UI · Lv1/7/11/15 · 选项刷新后自动重推荐；也可 F6",
             font=("Microsoft YaHei", 8),
             fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
         ).pack(fill=tk.X)
+
+        self.hex_banner_var = tk.StringVar(value="")
+        self.hex_banner = tk.Label(
+            hex_card, textvariable=self.hex_banner_var,
+            font=("Microsoft YaHei", 10, "bold"),
+            fg=self.GOLD_GLOW, bg=self.BG_CARD, anchor="w",
+        )
+        self.hex_banner.pack(fill=tk.X, pady=(4, 0))
+        self._hex_banner_clear_after = None
 
         # ---- 主操作按钮 ----
         btn_frame = tk.Frame(main, bg=self.BG)
@@ -1312,7 +1326,7 @@ class LauncherApp:
 
             self.engine_running = True
             self._set_status("运行中", self.SUCCESS)
-            self._log("✅ 引擎已启动! F6=刷新识别 | F7=识别 | F8=重置 | 自动海克斯 Lv1/7/11/15")
+            self._log("✅ 引擎已启动! F6=刷新识别 | F7=识别 | F8=重置 | 自动海克斯: 死亡/泉水/检查点/选项刷新")
             if self.settings.get("overlay_topmost", True) and self.overlay_window:
                 try:
                     self.overlay_window.attributes("-topmost", True)
@@ -1514,6 +1528,9 @@ class LauncherApp:
             self._log("重新加载数据...")
             self._load_data()
 
+        elif event == "hex_refresh_reminder":
+            self._flash_hex_refresh_banner()
+
         elif event == "log":
             self._log(msg.get("text", ""))
 
@@ -1626,6 +1643,38 @@ class LauncherApp:
     # ==========================================
     # UI 辅助方法
     # ==========================================
+
+    def _flash_hex_refresh_banner(self):
+        """状态条 + 海克斯卡片横幅 + 托盘气泡：刷新后已更新推荐。"""
+        msg = "刷新后已更新推荐"
+        self._set_status(msg, self.GOLD_GLOW)
+        self._log(f"✅ {msg}")
+        try:
+            if hasattr(self, "hex_banner_var"):
+                self.hex_banner_var.set(f"✨ {msg}")
+                if self._hex_banner_clear_after is not None:
+                    try:
+                        self.root.after_cancel(self._hex_banner_clear_after)
+                    except Exception:
+                        pass
+                self._hex_banner_clear_after = self.root.after(
+                    3500, lambda: self.hex_banner_var.set("")
+                )
+        except Exception:
+            pass
+        try:
+            if self.tray:
+                self.tray.notify("海克斯推荐", msg)
+        except Exception:
+            pass
+        # 短暂闪烁状态点
+        try:
+            self.status_dot.config(fg=self.GOLD_GLOW)
+            self.root.after(200, lambda: self.status_dot.config(fg=self.SUCCESS))
+            self.root.after(400, lambda: self.status_dot.config(fg=self.GOLD_GLOW))
+            self.root.after(700, lambda: self.status_dot.config(fg=self.SUCCESS))
+        except Exception:
+            pass
 
     def _set_status(self, text, color):
         self.status_var.set(text)

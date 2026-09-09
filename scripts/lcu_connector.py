@@ -396,8 +396,16 @@ class LCUConnector:
 
     def get_live_player_state(self):
         """
-        读取 Live Client Data，返回:
-          {"level": int, "is_dead": bool, "current_health": float, "champion": str}
+        读取 Live Client Data，返回选牌相关信号:
+          {
+            "level": int,
+            "is_dead": bool,           # playerlist.isDead / 血量<=0
+            "respawn_timer": float|None,
+            "current_health": float|None,
+            "champion": str,
+            "near_fountain": None,     # Live Client 不提供地图 XY，无法直接判定靠近泉水
+            "pick_window_likely": bool # 死亡（回泉水选牌代理）；真正选牌 UI 仍靠 OCR
+          }
         不在游戏内时返回 None。
         """
         # 优先 activeplayer
@@ -424,7 +432,8 @@ class LCUConnector:
                         is_dead = float(health) <= 0
                     except (TypeError, ValueError):
                         is_dead = False
-                # playerlist 补充 isDead（更可靠）
+                respawn_timer = None
+                # playerlist 补充 isDead / respawnTimer（更可靠）
                 try:
                     pl = requests.get(
                         'https://127.0.0.1:2999/liveclientdata/playerlist',
@@ -432,20 +441,36 @@ class LCUConnector:
                     )
                     if pl.status_code == 200:
                         my_name = (data.get('summonerName') or '').strip()
+                        my_riot = (data.get('riotId') or '').strip()
                         for p in pl.json():
-                            if my_name and p.get('summonerName') == my_name:
+                            name_ok = my_name and p.get('summonerName') == my_name
+                            riot_ok = my_riot and (
+                                p.get('riotId') == my_riot
+                                or p.get('riotIdGameName') == data.get('riotIdGameName')
+                            )
+                            if name_ok or riot_ok:
                                 if 'isDead' in p:
                                     is_dead = bool(p.get('isDead'))
                                 if level is None and p.get('level') is not None:
                                     level = p.get('level')
+                                if p.get('respawnTimer') is not None:
+                                    try:
+                                        respawn_timer = float(p.get('respawnTimer'))
+                                    except (TypeError, ValueError):
+                                        respawn_timer = None
                                 break
                 except Exception:
                     pass
+                # Live Client 无地图坐标；死亡 ≈ 回泉水/可开选牌窗口的代理信号
+                pick_window_likely = bool(is_dead)
                 return {
                     "level": int(level or 0),
                     "is_dead": bool(is_dead),
+                    "respawn_timer": respawn_timer,
                     "current_health": health,
                     "champion": data.get('championName') or '',
+                    "near_fountain": None,
+                    "pick_window_likely": pick_window_likely,
                 }
         except requests.exceptions.ConnectionError:
             return None

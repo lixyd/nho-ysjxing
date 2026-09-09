@@ -40,13 +40,14 @@
 | **自动接受** | 轮询 `/lol-matchmaking/v1/ready-check`，状态为 `InProgress` 等时 `POST .../accept` |
 | **自动开始/准备** | 大厅 `PUT /lol-lobby/v1/parties/ready`；可发起 `POST /lol-lobby/v2/lobby/matchmaking/search`；选人阶段尝试 `POST /lol-champ-select/v1/session/my-selection/ready` |
 | **执行延迟** | 接受 / 准备 / 开始前可选 **立即 / 3秒 / 5秒 / 10秒** 倒计时（默认 5 秒，写入 `data/settings.json` 的 `auto_accept_delay`）；倒计时中关闭对应开关可取消 |
-| **自动海克斯识别** | 通过 Live Client (`:2999`) 读取等级，在 **1 / 7 / 11 / 15** 检查点自动 OCR；死亡或检测到 UI 文字时触发；选完后空闲直到下一检查点 |
+| **自动海克斯识别** | Live Client 死亡/回泉水代理 + Lv **1/7/11/15** 检查点 + hex OCR 选牌 UI；选项刷新后自动重推荐并提示「刷新后已更新推荐」 |
 | **套用符文** | 开启后锁定英雄时自动走 LCU 套用；也可点「套用推荐符文」。数据见 `data/aram_runes.json` |
 
 其它：
 
 * **英雄检测**：复用现有 `LCUConnector`（ChampSelect / GameFlow / Live API）
-* **手动「刷新识别」**：界面按钮或 **F6**（不依赖自动流程）
+* **手动「刷新识别」**：界面按钮或 **F6**（不依赖自动流程；完成后提醒「刷新后已更新推荐」）
+* **选项刷新重推荐**：三张海克斯 OCR 文本变化（或局内刷新）后 debounce ~0.7s 立即重排并横幅/托盘提醒
 * **无边框友好置顶遮罩**：透明穿透 overlay，始终置顶
 * **深色 LoL 风 UI**：对局自动化 / 英雄·符文 / 海克斯 分区卡片
 * **中文 UI / 中文文档**
@@ -118,7 +119,7 @@ gui_launcher.py          # 中文 GUI + 开关 + 托盘（窗口标题：nho有�
 main.py                  # DataManager / OCR / Overlay
 scripts/lcu_connector.py # LCU + Live Client
 scripts/matchmaking.py   # 自动接受 / 准备 / 开始匹配
-scripts/auto_hex.py      # 等级检查点自动海克斯
+scripts/auto_hex.py      # 泉水/死亡/检查点/选项刷新自动海克斯
 scripts/runes.py         # 符文推荐与 LCU 套用
 scripts/build_aram_runes.py  # 自 Data Dragon + 对局统计重建 aram_runes.json
 data/aram_runes.json     # 全英雄 ARAM 符文（perk ID 已对齐 DDragon）
@@ -139,9 +140,19 @@ assets/                  # icon.ico / icon.png / logo.png / donate.jpg
 | 选人准备 | POST | `/lol-champ-select/v1/session/my-selection/ready` |
 | 当前符文页 | GET/PUT | `/lol-perks/v1/currentpage` |
 | 创建/更新符文 | POST/PUT/DELETE | `/lol-perks/v1/pages`、`/lol-perks/v1/pages/{id}` |
-| 局内等级 | GET | `https://127.0.0.1:2999/liveclientdata/activeplayer`（及 playerlist） |
+| 局内等级/死亡 | GET | `https://127.0.0.1:2999/liveclientdata/activeplayer` + `playerlist`（`level` / `isDead` / `respawnTimer`；无地图坐标） |
 
 **未做 / 弱化**：自定义房强制开始、自动秒选/秒 ban、完整外网 ARAM 符文库实时同步（当前为本地 JSON + 角色兜底；有 ID 即可套用）。
+
+### 自动海克斯触发信号（简述）
+
+| 信号 | 来源 | 说明 |
+|------|------|------|
+| **死亡 / 回泉水代理** | Live Client `playerlist.isDead`（及血量≤0） | 大乱斗选牌常在死亡回泉水时出现。**Live Client 不提供地图 XY**，故 `near_fountain` 无法直接判定，以死亡 + OCR UI 作为泉水/选牌窗口代理 |
+| **等级检查点** | Live Client `activeplayer.level` | 仍保留 **1 / 7 / 11 / 15** |
+| **选牌 UI 文字** | 现有 `hex_1/2/3` OCR 区域 | 屏幕上出现海克斯选项文字即视为可推荐 |
+| **选项刷新** | 三区 OCR 文本快照变化，或手动 F6 /「刷新识别」 | debounce ~0.7s 后重识别，GUI 横幅 + 托盘提示「刷新后已更新推荐」 |
+
 
 ---
 
@@ -150,7 +161,7 @@ assets/                  # icon.ico / icon.png / logo.png / donate.jpg
 1. 打开客户端并登录 → 启动 **nho有手就行** → 勾选需要的开关 → **开始识别**
 2. 排队时由「自动接受」处理 ready-check（可设 3/5/10 秒延迟倒计时）；大厅由「自动开始/准备」处理 ready / search
 3. 锁定英雄后可查看符文推荐；需要时点「套用推荐符文」或开启自动套用
-4. 进入海克斯大乱斗后，等级到 1/7/11/15 会尝试自动 OCR；也可随时 **F6 / 刷新识别**
+4. 进入海克斯大乱斗后，死亡/泉水选牌 UI 或等级 1/7/11/15 会自动 OCR；选项刷新后自动重推荐；也可随时 **F6 / 刷新识别**
 5. 遮罩金色=最优，绿色=可选，红色=未识别/无数据
 
 ---
