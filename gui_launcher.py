@@ -16,7 +16,10 @@ import traceback
 
 # ============ 路径初始化 (兼容 PyInstaller 打包) ============
 
-from scripts.config import get_base_dir, BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS
+from scripts.config import (
+    get_base_dir, BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS,
+    AUTO_DELAY_CHOICES, load_settings, save_settings, normalize_delay,
+)
 os.chdir(BASE_DIR)
 sys.path.insert(0, BASE_DIR)
 
@@ -35,18 +38,21 @@ from scripts.auto_hex import AutoHexWatcher
 # ============ 统一配色方案 ============
 
 class Theme:
-    """GitHub Dark Theme 配色常量 (单一来源)"""
-    BG          = "#0d1117"
-    BG_CARD     = "#161b22"
-    BG_INPUT    = "#0d1117"
-    ACCENT      = "#58a6ff"
-    ACCENT_HVR  = "#79c0ff"
-    SUCCESS     = "#3fb950"
-    WARNING     = "#d29922"
-    ERROR       = "#f85149"
-    TEXT        = "#e6edf3"
-    TEXT_DIM    = "#8b949e"
-    BORDER      = "#30363d"
+    """LoL 深色主题: 海军黑底 + 金色点缀"""
+    BG          = "#0a0e17"
+    BG_CARD     = "#121a27"
+    BG_INPUT    = "#0a0e17"
+    BG_SEG      = "#1a2436"
+    ACCENT      = "#c8aa6e"
+    ACCENT_HVR  = "#f0e6d2"
+    ACCENT_DIM  = "#785a28"
+    SUCCESS     = "#0acbe6"
+    WARNING     = "#c8aa6e"
+    ERROR       = "#e84057"
+    TEXT        = "#f0e6d2"
+    TEXT_DIM    = "#a09b8c"
+    BORDER      = "#1e2a3a"
+    GOLD_GLOW   = "#c89b3c"
 
 
 # ================= 日志重定向 =================
@@ -106,8 +112,14 @@ class GUIController(threading.Thread):
             flags={
                 "auto_accept": self.settings.get("auto_accept", True),
                 "auto_ready": self.settings.get("auto_ready", True),
+                "auto_accept_delay": normalize_delay(
+                    self.settings.get("auto_accept_delay", 5)
+                ),
             },
             on_event=lambda m: self.gui_queue.put({"event": "log", "text": m}),
+            on_countdown=lambda sec, label: self.gui_queue.put({
+                "event": "countdown", "seconds": sec, "label": label,
+            }),
         )
         self.auto_hex = AutoHexWatcher(
             lcu=lcu_connector,
@@ -134,6 +146,11 @@ class GUIController(threading.Thread):
             pass
 
     def update_setting(self, key, value):
+        if key == "auto_accept_delay":
+            delay = normalize_delay(value)
+            self.settings[key] = delay
+            self.matchmaking.set_flag(key, delay)
+            return
         self.settings[key] = bool(value)
         if key in ("auto_accept", "auto_ready"):
             self.matchmaking.set_flag(key, value)
@@ -442,348 +459,37 @@ class UpdateDialog:
         self.dlg.resizable(False, False)
 
     def _build_ui(self):
-        main = tk.Frame(self.dlg, bg=self.BG, padx=24, pady=20)
-        main.pack(fill=tk.BOTH, expand=True)
-
-        # 标题
-        tk.Label(main, text="选择更新方式", font=("Microsoft YaHei", 16, "bold"),
-                 fg=self.TEXT, bg=self.BG).pack(anchor="w", pady=(0, 4))
-
-        # ---- 爬虫选项区 ----
-        tk.Label(main, text="🌐 本地爬虫更新 (需要 Chrome 浏览器)",
-                 font=("Microsoft YaHei", 9), fg=self.WARNING,
-                 bg=self.BG).pack(anchor="w", pady=(8, 6))
-
-        self._option_row(main,
-            icon="🔍", title="抽样校验", tag="推荐",
-            desc="随机3英雄比对，有差异自动全量更新",
-            command=lambda: self._select('spot_check'))
-
-        self._option_row(main,
-            icon="🧠", title="智能增量", tag=None,
-            desc="自动爬取新英雄 + 改名英雄 + 缺失英雄",
-            command=lambda: self._select('smart'))
-
-        self._option_row(main,
-            icon="🔄", title="全量更新", tag=None,
-            desc="强制重爬所有英雄，耗时较长",
-            command=lambda: self._select('full'))
-
-        self._option_row(main,
-            icon="🎯", title="精确更新", tag=None,
-            desc="手动指定英雄名称进行更新",
-            command=self._precise_input)
-
-        # ---- 分隔线 ----
-        sep_frame = tk.Frame(main, bg=self.BG, pady=8)
-        sep_frame.pack(fill=tk.X)
-        tk.Frame(sep_frame, bg=self.BORDER, height=1).pack(fill=tk.X)
-
-        # ---- GitHub 下载 ----
-        tk.Label(main, text="📦 在线下载 (无需浏览器)",
-                 font=("Microsoft YaHei", 9), fg=self.TEXT_DIM,
-                 bg=self.BG).pack(anchor="w", pady=(0, 6))
-
-        self._option_row(main,
-            icon="📥", title="GitHub 下载", tag=None,
-            desc="从仓库下载预处理数据 (取决于仓库更新时间)",
-            command=lambda: self._select('github'))
-
-        # ---- 底部: 帮助按钮 ----
-        bottom = tk.Frame(main, bg=self.BG)
-        bottom.pack(fill=tk.X, pady=(8, 0))
-
-        help_btn = tk.Label(bottom, text=" ？", font=("Microsoft YaHei", 12, "bold"),
-                            fg=self.TEXT_DIM, bg=self.BG, cursor="hand2",
-                            width=3, relief=tk.FLAT,
-                            highlightbackground=self.BORDER, highlightthickness=1)
-        help_btn.pack(side=tk.RIGHT)
-        help_btn.bind("<Enter>", lambda e: help_btn.config(fg=self.ACCENT))
-        help_btn.bind("<Leave>", lambda e: help_btn.config(fg=self.TEXT_DIM))
-        help_btn.bind("<Button-1>", lambda e: self._show_help())
-
-    def _option_row(self, parent, icon, title, tag, desc, command):
-        """创建一个可点击的选项行"""
-        row = tk.Frame(parent, bg=self.BG_CARD, cursor="hand2",
-                       highlightbackground=self.BORDER, highlightthickness=1)
-        row.pack(fill=tk.X, pady=(0, 6))
-
-        inner = tk.Frame(row, bg=self.BG_CARD, padx=14, pady=10)
-        inner.pack(fill=tk.X)
-
-        # 标题行
-        title_row = tk.Frame(inner, bg=self.BG_CARD)
-        title_row.pack(fill=tk.X)
-
-        tk.Label(title_row, text=f"{icon}  {title}",
-                 font=("Microsoft YaHei", 11, "bold"),
-                 fg=self.TEXT, bg=self.BG_CARD).pack(side=tk.LEFT)
-
-        if tag:
-            tag_frame = tk.Frame(title_row, bg=self.ACCENT, padx=6, pady=1)
-            tag_frame.pack(side=tk.RIGHT)
-            tk.Label(tag_frame, text=tag, font=("Microsoft YaHei", 8),
-                     fg="white", bg=self.ACCENT).pack()
-
-        # 描述
-        tk.Label(inner, text=desc, font=("Microsoft YaHei", 9),
-                 fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w").pack(fill=tk.X, pady=(2, 0))
-
-        # 绑定点击事件到所有子组件
-        def _on_enter(e):
-            row.config(highlightbackground=self.ACCENT)
-        def _on_leave(e):
-            row.config(highlightbackground=self.BORDER)
-        def _on_click(e):
-            command()
-
-        for widget in [row, inner, title_row] + list(inner.winfo_children()) + list(title_row.winfo_children()):
-            widget.bind("<Enter>", _on_enter)
-            widget.bind("<Leave>", _on_leave)
-            widget.bind("<Button-1>", _on_click)
-
-    def _select(self, mode):
-        """选择更新模式并关闭对话框"""
-        self.dlg.destroy()
-        self.app._run_update(mode)
-
-    def _precise_input(self):
-        """精确更新: 弹出输入框"""
-        input_dlg = tk.Toplevel(self.dlg)
-        input_dlg.title("精确更新 - 输入英雄名")
-        input_dlg.geometry("360x150")
-        input_dlg.resizable(False, False)
-        input_dlg.configure(bg=self.BG)
-        input_dlg.transient(self.dlg)
-        input_dlg.grab_set()
-
-        frame = tk.Frame(input_dlg, bg=self.BG, padx=20, pady=16)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        tk.Label(frame, text="输入英雄名称 (多个用逗号分隔)",
-                 font=("Microsoft YaHei", 10), fg=self.TEXT,
-                 bg=self.BG).pack(anchor="w", pady=(0, 8))
-
-        entry = tk.Entry(frame, font=("Microsoft YaHei", 11),
-                         bg=self.BG_CARD, fg=self.TEXT,
-                         insertbackground=self.TEXT,
-                         highlightbackground=self.BORDER,
-                         highlightthickness=1, relief=tk.FLAT, borderwidth=6)
-        entry.pack(fill=tk.X, pady=(0, 12))
-        entry.focus_set()
-
-        def _submit():
-            names = [n.strip() for n in entry.get().split(",") if n.strip()]
-            if names:
-                input_dlg.destroy()
-                self.dlg.destroy()
-                self.app._run_update('precise', hero_names=names)
-
-        entry.bind("<Return>", lambda e: _submit())
-
-        ttk.Button(frame, text="开始更新", style='Accent.TButton',
-                   command=_submit).pack(fill=tk.X)
-
-    def _show_help(self):
-        """显示帮助信息"""
-        help_text = (
-            "📖 更新方式说明\n\n"
-            "━━ 本地爬虫 (需要 Chrome) ━━\n\n"
-            "🔍 抽样校验 [推荐]\n"
-            "  从所有英雄中随机选取3个，爬取最新数据与本地\n"
-            "  比对。如果发现差异，自动触发全量更新。\n"
-            "  适合游戏版本更新后快速检测数据是否过期。\n\n"
-            "🧠 智能增量\n"
-            "  自动检测并爬取: 新出的英雄、近期改名的英雄、\n"
-            "  以及本地缺失数据的英雄。不会重复爬取已有数据。\n\n"
-            "🔄 全量更新\n"
-            "  强制重新爬取全部英雄的海克斯数据。\n"
-            "  耗时较长 (约10-20分钟)，适合数据严重过期时使用。\n\n"
-            "🎯 精确更新\n"
-            "  手动输入英雄名称 (支持中文名/英文名)，\n"
-            "  仅更新指定英雄的数据。\n\n"
-            "━━ 在线下载 (无需 Chrome) ━━\n\n"
-            "📥 GitHub 下载\n"
-            "  从项目仓库直接下载预处理好的数据文件。\n"
-            "  ⚠ 注意: 仓库数据由开发者手动更新推送，\n"
-            "  时效性不一定能保证。如果需要最新数据，\n"
-            "  建议优先使用爬虫方式。"
-        )
-        messagebox.showinfo("更新方式说明", help_text, parent=self.dlg)
-
-
-# ================= 主 GUI 应用 =================
-
-class LauncherApp:
-    """nho有手就行 - 主界面"""
-
-    # 配色方案 (引用统一主题)
-    BG          = Theme.BG
-    BG_CARD     = Theme.BG_CARD
-    BG_INPUT    = Theme.BG_INPUT
-    ACCENT      = Theme.ACCENT
-    ACCENT_HVR  = Theme.ACCENT_HVR
-    SUCCESS     = Theme.SUCCESS
-    WARNING     = Theme.WARNING
-    ERROR       = Theme.ERROR
-    TEXT        = Theme.TEXT
-    TEXT_DIM    = Theme.TEXT_DIM
-    BORDER      = Theme.BORDER
-
-    FONT_TITLE  = ("Microsoft YaHei", 18, "bold")
-    FONT_SUB    = ("Microsoft YaHei", 10)
-    FONT_HERO   = ("Microsoft YaHei", 22, "bold")
-    FONT_STATUS = ("Microsoft YaHei", 11)
-    FONT_BTN    = ("Microsoft YaHei", 11, "bold")
-    FONT_LOG    = ("Consolas", 9)
-
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("nho有手就行 · 海克斯 / 匹配 / 符文")
-        self.root.geometry("560x780")
-        self.root.minsize(520, 700)
-        self.root.configure(bg=self.BG)
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        # 设置窗口图标
-        icon_path = os.path.join(BASE_DIR, 'assets', 'icon.ico')
-        if os.path.exists(icon_path):
-            self.root.iconbitmap(icon_path)
-
-        # ttk 主题
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        self._configure_styles()
-
-        # 状态变量
-        self.engine_running = False
-        self.controller = None
-        self.overlay = None
-        self.overlay_window = None
-        self.dm = None
-        self.analyzer = None
-        self.lcu = None
-        self.tray = TrayManager(self)
-        self.settings = self._load_settings()
-        self.rune_service = RuneService()
-        self._toggle_vars = {}
-
-        # 通信队列
-        self.overlay_queue = queue.Queue()
-        self.gui_queue = queue.Queue()
-        self.log_queue = queue.Queue()
-
-        # UI 变量
-        self.hero_var = tk.StringVar(value="—")
-        self.status_var = tk.StringVar(value="等待启动")
-        self.status_color = self.TEXT_DIM
-        self._pulse_state = 0
-
-        # 重定向日志
-        self._orig_stdout = sys.stdout
-        self._orig_stderr = sys.stderr
-        sys.stdout = LogRedirector(self.log_queue, self._orig_stdout)
-        sys.stderr = LogRedirector(self.log_queue, self._orig_stderr)
-
-        # 构建 UI
-        self._build_ui()
-
-        # 启动队列轮询
-        self.root.after(100, self._poll_queues)
-
-        # 启动时加载数据
-        self.root.after(300, self._load_data)
-
-    # ==========================================
-    # ttk 样式配置
-    # ==========================================
-
-    def _configure_styles(self):
-        s = self.style
-
-        # 主按钮 (蓝色)
-        s.configure('Accent.TButton',
-                     background=self.ACCENT,
-                     foreground='white',
-                     font=self.FONT_BTN,
-                     padding=(16, 10),
-                     borderwidth=0)
-        s.map('Accent.TButton',
-              background=[('active', self.ACCENT_HVR), ('disabled', self.BORDER)])
-
-        # 次要按钮 (深灰)
-        s.configure('Secondary.TButton',
-                     background=self.BG_CARD,
-                     foreground=self.TEXT,
-                     font=self.FONT_BTN,
-                     padding=(12, 8),
-                     borderwidth=1)
-        s.map('Secondary.TButton',
-              background=[('active', self.BORDER), ('disabled', '#0d1117')])
-
-        # 停止按钮 (红色)
-        s.configure('Danger.TButton',
-                     background=self.ERROR,
-                     foreground='white',
-                     font=self.FONT_BTN,
-                     padding=(16, 10),
-                     borderwidth=0)
-        s.map('Danger.TButton',
-              background=[('active', '#da3633')])
-
-        # 链接按钮 (无背景)
-        s.configure('Link.TButton',
-                     background=self.BG,
-                     foreground=self.TEXT_DIM,
-                     font=self.FONT_SUB,
-                     padding=(8, 4),
-                     borderwidth=0)
-        s.map('Link.TButton',
-              foreground=[('active', self.ACCENT)],
-              background=[('active', self.BG)])
-
-    # ==========================================
-    # 构建 UI
-    # ==========================================
-
-    def _build_ui(self):
-        main = tk.Frame(self.root, bg=self.BG, padx=24, pady=16)
+        main = tk.Frame(self.root, bg=self.BG, padx=20, pady=14)
         main.pack(fill=tk.BOTH, expand=True)
 
         # ---- Header ----
         hdr = tk.Frame(main, bg=self.BG)
-        hdr.pack(fill=tk.X, pady=(0, 16))
+        hdr.pack(fill=tk.X, pady=(0, 12))
 
-        # 标志六边形 (文字模拟)
         tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
                  bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side=tk.LEFT)
         tk.Label(title_frame, text="nho有手就行",
-                 font=self.FONT_TITLE, fg=self.TEXT, bg=self.BG).pack(anchor="w")
+                 font=self.FONT_TITLE, fg=self.ACCENT, bg=self.BG).pack(anchor="w")
         tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
                  font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
 
-        # ---- 分隔线 ----
-        tk.Frame(main, bg=self.BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+        # 金色分隔
+        tk.Frame(main, bg=self.ACCENT_DIM, height=2).pack(fill=tk.X, pady=(0, 12))
 
-        # ---- 状态卡片 ----
-        card = tk.Frame(main, bg=self.BG_CARD, padx=20, pady=16,
-                        highlightbackground=self.BORDER, highlightthickness=1)
-        card.pack(fill=tk.X, pady=(0, 8))
-
-        # 英雄行
-        hero_row = tk.Frame(card, bg=self.BG_CARD)
-        hero_row.pack(fill=tk.X, pady=(0, 8))
+        # ---- 状态条 ----
+        status_card = self._make_card(main)
+        hero_row = tk.Frame(status_card, bg=self.BG_CARD)
+        hero_row.pack(fill=tk.X, pady=(0, 6))
         tk.Label(hero_row, text="当前英雄", font=self.FONT_SUB,
                  fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
         self.hero_label = tk.Label(hero_row, textvariable=self.hero_var,
                                    font=self.FONT_HERO, fg=self.ACCENT, bg=self.BG_CARD)
         self.hero_label.pack(side=tk.RIGHT)
 
-        # 状态行
-        status_row = tk.Frame(card, bg=self.BG_CARD)
+        status_row = tk.Frame(status_card, bg=self.BG_CARD)
         status_row.pack(fill=tk.X)
         tk.Label(status_row, text="运行状态", font=self.FONT_SUB,
                  fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
@@ -795,12 +501,77 @@ class LauncherApp:
                                      bg=self.BG_CARD)
         self.status_label.pack(side=tk.RIGHT)
 
-        # ---- 手动输入英雄 ----
-        manual_frame = tk.Frame(main, bg=self.BG, pady=4)
+        # 倒计时（激活时醒目）
+        self.countdown_label = tk.Label(
+            status_card, textvariable=self.countdown_var,
+            font=("Microsoft YaHei", 16, "bold"),
+            fg=self.GOLD_GLOW, bg=self.BG_CARD, pady=4,
+        )
+        # 默认不占位；有内容时再 pack
+        self._countdown_packed = False
+
+        # ========== 卡片: 对局自动化 ==========
+        auto_card = self._make_card(main, title="对局自动化")
+
+        toggles_auto = [
+            ("auto_accept", "自动接受"),
+            ("auto_ready", "自动开始/准备"),
+        ]
+        row_auto = tk.Frame(auto_card, bg=self.BG_CARD)
+        row_auto.pack(fill=tk.X, pady=(0, 8))
+        for i, (key, label) in enumerate(toggles_auto):
+            var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
+            self._toggle_vars[key] = var
+            cb = tk.Checkbutton(
+                row_auto, text=label, variable=var,
+                font=("Microsoft YaHei", 10),
+                fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
+                activeforeground=self.TEXT, selectcolor=self.BG,
+                highlightthickness=0, bd=0,
+                command=lambda k=key, v=var: self._on_toggle(k, v),
+            )
+            cb.pack(side=tk.LEFT, padx=(0, 20))
+
+        # 延迟分段选择
+        delay_row = tk.Frame(auto_card, bg=self.BG_CARD)
+        delay_row.pack(fill=tk.X, pady=(2, 0))
+        tk.Label(delay_row, text="执行延迟", font=self.FONT_SUB,
+                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT, padx=(0, 10))
+
+        seg = tk.Frame(delay_row, bg=self.BORDER, padx=1, pady=1)
+        seg.pack(side=tk.LEFT)
+        seg_inner = tk.Frame(seg, bg=self.BG_SEG)
+        seg_inner.pack()
+
+        current_delay = normalize_delay(self.settings.get("auto_accept_delay", 5))
+        self._delay_value = current_delay
+        labels_map = {0: "立即", 3: "3秒", 5: "5秒", 10: "10秒"}
+        for sec in AUTO_DELAY_CHOICES:
+            btn = tk.Label(
+                seg_inner, text=labels_map[sec],
+                font=("Microsoft YaHei", 9, "bold"),
+                padx=12, pady=5, cursor="hand2",
+            )
+            btn.pack(side=tk.LEFT)
+            btn.bind("<Button-1>", lambda e, s=sec: self._on_delay_select(s))
+            self._delay_btns[sec] = btn
+        self._refresh_delay_buttons()
+
+        tk.Label(
+            auto_card,
+            text="接受 / 准备 / 开始前倒计时；关闭开关可取消",
+            font=("Microsoft YaHei", 8),
+            fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
+        ).pack(fill=tk.X, pady=(6, 0))
+
+        # ========== 卡片: 英雄/符文 ==========
+        hero_card = self._make_card(main, title="英雄 / 符文")
+
+        manual_frame = tk.Frame(hero_card, bg=self.BG_CARD)
         manual_frame.pack(fill=tk.X, pady=(0, 8))
 
         self.hero_entry = tk.Entry(manual_frame, font=("Microsoft YaHei", 11),
-                                   bg=self.BG_CARD, fg=self.TEXT,
+                                   bg=self.BG_INPUT, fg=self.TEXT,
                                    insertbackground=self.TEXT,
                                    highlightbackground=self.BORDER,
                                    highlightthickness=1, relief=tk.FLAT,
@@ -817,70 +588,79 @@ class LauncherApp:
                                      command=self._manual_set_hero)
         self.manual_btn.pack(side=tk.RIGHT)
 
-        # ---- 热键提示 ----
-        hotkey_frame = tk.Frame(main, bg=self.BG)
-        hotkey_frame.pack(fill=tk.X, pady=(0, 12))
+        # 热键提示
+        hotkey_frame = tk.Frame(hero_card, bg=self.BG_CARD)
+        hotkey_frame.pack(fill=tk.X, pady=(0, 8))
         hotkeys = [("F6", "刷新识别"), ("F7", "识别英雄"), ("F8", "重置")]
         for key, desc in hotkeys:
             pill = tk.Frame(hotkey_frame, bg=self.BORDER, padx=1, pady=1)
-            pill.pack(side=tk.LEFT, padx=(0, 10))
-            inner = tk.Frame(pill, bg=self.BG_CARD, padx=8, pady=3)
+            pill.pack(side=tk.LEFT, padx=(0, 8))
+            inner = tk.Frame(pill, bg=self.BG_SEG, padx=8, pady=3)
             inner.pack()
             tk.Label(inner, text=key, font=("Consolas", 9, "bold"),
-                     fg=self.ACCENT, bg=self.BG_CARD).pack(side=tk.LEFT, padx=(0, 4))
+                     fg=self.ACCENT, bg=self.BG_SEG).pack(side=tk.LEFT, padx=(0, 4))
             tk.Label(inner, text=desc, font=("Microsoft YaHei", 9),
-                     fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
+                     fg=self.TEXT_DIM, bg=self.BG_SEG).pack(side=tk.LEFT)
 
-        # ---- 功能开关 ----
-        toggle_card = tk.Frame(main, bg=self.BG_CARD, padx=14, pady=10,
-                               highlightbackground=self.BORDER, highlightthickness=1)
-        toggle_card.pack(fill=tk.X, pady=(0, 10))
-        tk.Label(toggle_card, text="功能开关", font=self.FONT_SUB,
-                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(anchor="w", pady=(0, 6))
+        rune_toggle_row = tk.Frame(hero_card, bg=self.BG_CARD)
+        rune_toggle_row.pack(fill=tk.X, pady=(0, 6))
+        key, label = "auto_apply_runes", "自动套用符文"
+        var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
+        self._toggle_vars[key] = var
+        tk.Checkbutton(
+            rune_toggle_row, text=label, variable=var,
+            font=("Microsoft YaHei", 10),
+            fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
+            activeforeground=self.TEXT, selectcolor=self.BG,
+            highlightthickness=0, bd=0,
+            command=lambda k=key, v=var: self._on_toggle(k, v),
+        ).pack(side=tk.LEFT)
 
-        toggles = [
-            ("auto_accept", "自动接受"),
-            ("auto_ready", "自动开始/准备"),
-            ("auto_hex", "自动海克斯识别"),
-            ("auto_apply_runes", "套用符文"),
-        ]
-        row = tk.Frame(toggle_card, bg=self.BG_CARD)
-        row.pack(fill=tk.X)
-        for i, (key, label) in enumerate(toggles):
-            var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
-            self._toggle_vars[key] = var
-            cb = tk.Checkbutton(
-                row, text=label, variable=var,
-                font=("Microsoft YaHei", 9),
-                fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
-                activeforeground=self.TEXT, selectcolor=self.BG,
-                highlightthickness=0, bd=0,
-                command=lambda k=key, v=var: self._on_toggle(k, v),
-            )
-            cb.grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 16), pady=2)
-
-        # 符文信息 + 操作按钮
-        action_row = tk.Frame(main, bg=self.BG)
-        action_row.pack(fill=tk.X, pady=(0, 8))
-        self.refresh_btn = ttk.Button(action_row, text="🔄 刷新识别",
-                                      style='Secondary.TButton',
-                                      command=self._manual_refresh_ocr)
-        self.refresh_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 6))
+        action_row = tk.Frame(hero_card, bg=self.BG_CARD)
+        action_row.pack(fill=tk.X, pady=(0, 4))
         self.rune_btn = ttk.Button(action_row, text="⚔ 套用推荐符文",
                                    style='Secondary.TButton',
                                    command=self._manual_apply_runes)
         self.rune_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
         self.rune_info_var = tk.StringVar(value="符文: 锁定英雄后显示推荐")
-        tk.Label(main, textvariable=self.rune_info_var, font=("Microsoft YaHei", 9),
-                 fg=self.TEXT_DIM, bg=self.BG, justify="left", anchor="w",
-                 wraplength=500).pack(fill=tk.X, pady=(0, 8))
+        tk.Label(hero_card, textvariable=self.rune_info_var, font=("Microsoft YaHei", 9),
+                 fg=self.TEXT_DIM, bg=self.BG_CARD, justify="left", anchor="w",
+                 wraplength=500).pack(fill=tk.X, pady=(4, 0))
 
-        # ---- 按钮区域 ----
+        # ========== 卡片: 海克斯 ==========
+        hex_card = self._make_card(main, title="海克斯")
+
+        hex_row = tk.Frame(hex_card, bg=self.BG_CARD)
+        hex_row.pack(fill=tk.X, pady=(0, 8))
+        key, label = "auto_hex", "自动海克斯识别"
+        var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
+        self._toggle_vars[key] = var
+        tk.Checkbutton(
+            hex_row, text=label, variable=var,
+            font=("Microsoft YaHei", 10),
+            fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
+            activeforeground=self.TEXT, selectcolor=self.BG,
+            highlightthickness=0, bd=0,
+            command=lambda k=key, v=var: self._on_toggle(k, v),
+        ).pack(side=tk.LEFT)
+
+        self.refresh_btn = ttk.Button(hex_row, text="🔄 刷新识别",
+                                      style='Secondary.TButton',
+                                      command=self._manual_refresh_ocr)
+        self.refresh_btn.pack(side=tk.RIGHT)
+
+        tk.Label(
+            hex_card,
+            text="等级 1 / 7 / 11 / 15 检查点自动 OCR；也可按 F6",
+            font=("Microsoft YaHei", 8),
+            fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
+        ).pack(fill=tk.X)
+
+        # ---- 主操作按钮 ----
         btn_frame = tk.Frame(main, bg=self.BG)
-        btn_frame.pack(fill=tk.X, pady=(0, 12))
+        btn_frame.pack(fill=tk.X, pady=(4, 10))
 
-        # 开始/停止按钮
         self.start_btn = ttk.Button(btn_frame, text="▶  开始识别",
                                      style='Accent.TButton', command=self._start_engine)
         self.start_btn.pack(fill=tk.X, pady=(0, 8))
@@ -889,13 +669,11 @@ class LauncherApp:
                                     style='Danger.TButton', command=self._stop_engine)
         # 停止按钮初始隐藏
 
-        # 数据更新按钮
         self.update_btn = ttk.Button(btn_frame, text="📦  数据更新",
                                      style='Secondary.TButton',
                                      command=self._show_update_dialog)
-        self.update_btn.pack(fill=tk.X, pady=(0, 8))
+        self.update_btn.pack(fill=tk.X, pady=(0, 6))
 
-        # 托盘按钮
         self.tray_btn = ttk.Button(btn_frame, text="最小化到系统托盘",
                                     style='Link.TButton', command=self._minimize_to_tray)
         self.tray_btn.pack()
@@ -908,17 +686,66 @@ class LauncherApp:
 
         self.log_text = scrolledtext.ScrolledText(
             main, font=self.FONT_LOG, bg=self.BG_INPUT, fg=self.TEXT_DIM,
-            insertbackground=self.TEXT_DIM, selectbackground=self.ACCENT,
-            relief=tk.FLAT, borderwidth=0, height=12, wrap=tk.WORD, state=tk.DISABLED,
+            insertbackground=self.TEXT_DIM, selectbackground=self.ACCENT_DIM,
+            relief=tk.FLAT, borderwidth=0, height=10, wrap=tk.WORD, state=tk.DISABLED,
             highlightbackground=self.BORDER, highlightthickness=1
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        # 日志颜色标签
         self.log_text.tag_configure("success", foreground=self.SUCCESS)
         self.log_text.tag_configure("error", foreground=self.ERROR)
         self.log_text.tag_configure("warning", foreground=self.WARNING)
         self.log_text.tag_configure("info", foreground=self.TEXT_DIM)
+
+    def _make_card(self, parent, title=None):
+        """深色卡片容器（圆角感靠 padding + 边框）。"""
+        outer = tk.Frame(
+            parent, bg=self.BG_CARD, padx=14, pady=12,
+            highlightbackground=self.BORDER, highlightthickness=1,
+        )
+        outer.pack(fill=tk.X, pady=(0, 10))
+        if title:
+            title_row = tk.Frame(outer, bg=self.BG_CARD)
+            title_row.pack(fill=tk.X, pady=(0, 8))
+            tk.Frame(title_row, bg=self.ACCENT, width=3, height=14).pack(side=tk.LEFT, padx=(0, 8))
+            tk.Label(
+                title_row, text=title,
+                font=("Microsoft YaHei", 11, "bold"),
+                fg=self.ACCENT, bg=self.BG_CARD,
+            ).pack(side=tk.LEFT)
+        return outer
+
+    def _refresh_delay_buttons(self):
+        for sec, btn in self._delay_btns.items():
+            if sec == self._delay_value:
+                btn.config(bg=self.ACCENT, fg="#0a0e17")
+            else:
+                btn.config(bg=self.BG_SEG, fg=self.TEXT_DIM)
+
+    def _on_delay_select(self, seconds):
+        seconds = normalize_delay(seconds)
+        self._delay_value = seconds
+        self.settings["auto_accept_delay"] = seconds
+        self._save_settings()
+        self._refresh_delay_buttons()
+        if self.controller and self.engine_running:
+            self.controller.update_setting("auto_accept_delay", seconds)
+        labels = {0: "立即", 3: "3秒", 5: "5秒", 10: "10秒"}
+        self._log(f"⏱ 执行延迟已设为 {labels.get(seconds, str(seconds))}")
+
+    def _set_countdown_ui(self, seconds, label=""):
+        """更新醒目倒计时显示；seconds 为 None 时隐藏。"""
+        if seconds is None:
+            self.countdown_var.set("")
+            if self._countdown_packed:
+                self.countdown_label.pack_forget()
+                self._countdown_packed = False
+            return
+        # 醒目倒计时，形如 「3…」「2…」「1…」
+        self.countdown_var.set(f"⏳ {label}  「{int(seconds)}…」")
+        if not self._countdown_packed:
+            self.countdown_label.pack(fill=tk.X, pady=(8, 0))
+            self._countdown_packed = True
 
     # ==========================================
     # 数据加载
@@ -1218,6 +1045,9 @@ class LauncherApp:
             first = info.splitlines()[0] if info else ""
             self.rune_info_var.set(first or "符文推荐已更新")
 
+        elif event == "countdown":
+            self._set_countdown_ui(msg.get("seconds"), msg.get("label") or "")
+
     # ==========================================
     # 手动英雄输入
     # ==========================================
@@ -1271,24 +1101,10 @@ class LauncherApp:
     # ==========================================
 
     def _load_settings(self):
-        data = dict(DEFAULT_SETTINGS)
-        try:
-            if os.path.exists(SETTINGS_FILE):
-                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    data.update({k: bool(v) for k, v in loaded.items() if k in DEFAULT_SETTINGS})
-        except Exception as e:
-            print(f"设置加载失败: {e}")
-        return data
+        return load_settings(SETTINGS_FILE)
 
     def _save_settings(self):
-        try:
-            os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"设置保存失败: {e}")
+        save_settings(self.settings, SETTINGS_FILE)
 
     def _on_toggle(self, key, var):
         value = bool(var.get())
