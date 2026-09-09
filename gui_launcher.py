@@ -1280,6 +1280,7 @@ class LauncherApp:
 
         current_delay = normalize_delay(self.settings.get("auto_accept_delay", 5))
         self._delay_value = current_delay
+        self._delay_btns = {}
         labels_map = {0: "立即", 3: "3秒", 5: "5秒", 10: "10秒"}
         for sec in AUTO_DELAY_CHOICES:
             btn = tk.Label(
