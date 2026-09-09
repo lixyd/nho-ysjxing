@@ -25,7 +25,6 @@ sys.path.insert(0, BASE_DIR)
 
 # ============ 延迟导入 (需要 path 已设置) ============
 
-import keyboard
 from PIL import Image, ImageDraw
 import pystray
 import json
@@ -88,7 +87,7 @@ class LogRedirector(io.TextIOBase):
 # ================= 后台控制器 (替代 InputController) =================
 
 class GUIController(threading.Thread):
-    """后台引擎: LCU 自动检测 + F6/F7 热键 + 匹配/海克斯自动化"""
+    """后台引擎: LCU 自动检测 + UI 按钮动作 + 匹配/海克斯自动化"""
 
     def __init__(self, overlay_queue, gui_queue, data_manager, analyzer, lcu_connector,
                  settings=None, rune_service=None):
@@ -102,12 +101,10 @@ class GUIController(threading.Thread):
         self.rune_service = rune_service or RuneService(lcu_connector)
         self.current_hero = None
         self.running = True
-        self._last_f6 = 0
-        self._last_f7 = 0
-        self._last_f8 = 0
+        self._reset_requested = False  # UI「重置」→ 引擎线程处理
         self._last_phase = None
         self._last_hero_poll = 0.0
-        self._fast_poll_until = 0.0  # F7 / ChampSelect 后加速轮询
+        self._fast_poll_until = 0.0  # 识别英雄 / ChampSelect 后加速轮询
 
         self.matchmaking = MatchmakingService(
             lcu_connector,
@@ -169,7 +166,7 @@ class GUIController(threading.Thread):
         self._gui(event="status", status="analyzed", hero=self.current_hero)
 
     def _on_hex_refresh_reminder(self):
-        """选项刷新 / 手动 F6 后的 UI 提醒。"""
+        """选项刷新 / 手动「刷新识别」后的 UI 提醒。"""
         self._gui(event="hex_refresh_reminder")
 
     def _validate_hero(self, name):
@@ -238,7 +235,7 @@ class GUIController(threading.Thread):
             self._clear_hero_dependent_state()
         self.current_hero = hero
         self._gui(event="hero_found", hero=hero, source=source or ("手动输入" if from_manual else ""))
-        self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
+        self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n点击刷新识别"})
         self._maybe_show_runes(hero)
         return hero
 
@@ -251,9 +248,9 @@ class GUIController(threading.Thread):
         return None
 
     def trigger_analyze(self):
-        """手动刷新识别 (等同 F6)"""
+        """手动刷新识别（UI「刷新识别」按钮）"""
         if not self.current_hero:
-            self.overlay_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请按 F7 获取"})
+            self.overlay_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请点击识别英雄"})
             self._gui(event="status", status="no_hero_warning")
             return False
         self._gui(event="status", status="analyzing", hero=self.current_hero)
@@ -267,6 +264,34 @@ class GUIController(threading.Thread):
             self.auto_hex.notify_manual_refresh(results or {})
             self.auto_hex.mark_ui_gone_if_needed(results or {})
         return True
+
+    def trigger_refresh_hero(self):
+        """手动识别/刷新英雄（UI「识别英雄」按钮）"""
+        now = time.time()
+        self._fast_poll_until = now + 20
+        self._last_hero_poll = 0  # 立刻再检
+        self._gui(event="status", status="refreshing")
+        self.overlay_queue.put({"cmd": "STATUS", "data": "刷新英雄..."})
+        print("点击识别英雄: 正在从 LCU / Live Client 获取…")
+        hero, source = self._try_auto_detect()
+        if hero and hero != self.current_hero:
+            self._apply_hero_change(hero, source)
+            self.overlay_queue.put({"cmd": "STATUS", "data": f"已切换: {hero}\n点击刷新识别"})
+        elif hero:
+            self._gui(event="hero_confirmed", hero=hero)
+            self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n点击刷新识别"})
+        else:
+            self.overlay_queue.put({
+                "cmd": "STATUS",
+                "data": f"当前: {self.current_hero or '未知'}\n点击刷新识别",
+            })
+        return hero
+
+    def request_reset(self):
+        """请求重置：由引擎线程在循环中消费，重新进入自动检测。"""
+        print("重置: 请求重新进入自动检测阶段")
+        self._gui(event="status", status="resetting")
+        self._reset_requested = True
 
     def apply_runes_for_current(self):
         if not self.current_hero:
@@ -309,8 +334,11 @@ class GUIController(threading.Thread):
                 self._apply_hero_change(hero, source)
                 return
 
-            # F8 中断自动检测
-            if keyboard.is_pressed('f8'):
+            # UI「重置」可中断自动检测（随后会重新进入本阶段）
+            if self._reset_requested:
+                self._reset_requested = False
+                self.current_hero = None
+                self._clear_hero_dependent_state()
                 break
 
             self._gui(event="status", status="waiting", attempt=attempt)
@@ -333,18 +361,27 @@ class GUIController(threading.Thread):
         print("暂未检测到英雄，可在上方手动输入英雄名")
         print("提示: 如果客户端已打开，请尝试以管理员身份运行本程序")
         self._gui(event="status", status="idle")
-        self.overlay_queue.put({"cmd": "STATUS", "data": "暂无英雄\n按 F7 或手动输入"})
+        self.overlay_queue.put({"cmd": "STATUS", "data": "暂无英雄\n点击识别英雄或手动输入"})
 
-    # ---------- 阶段2: 热键监听 ----------
+    # ---------- 阶段2: 监听 / 自动化 ----------
 
     def _listening_phase(self):
         if not self.running:
             return
         self._gui(event="status", status="listening", hero=self.current_hero)
-        print(f"热键监听中... 当前英雄: {self.current_hero or '未指定'}")
+        print(f"引擎运行中... 当前英雄: {self.current_hero or '未指定'}（点击界面按钮操作）")
 
         while self.running:
             now = time.time()
+
+            # UI「重置」→ 清空并回到自动检测
+            if self._reset_requested:
+                self._reset_requested = False
+                print("重置: 重新进入自动检测阶段")
+                self.current_hero = None
+                self._clear_hero_dependent_state()
+                time.sleep(0.3)
+                return  # 退出 listening_phase, 回到 auto_detect
 
             # 阶段变化: 进入新对局时重置自动海克斯
             try:
@@ -362,7 +399,7 @@ class GUIController(threading.Thread):
             except Exception:
                 pass
 
-            # 周期性英雄重检：ChampSelect / F7 后加速，对局中也能跟上骰子换人
+            # 周期性英雄重检：ChampSelect / 识别英雄后加速，对局中也能跟上骰子换人
             try:
                 phase = self._last_phase
                 if phase == "ChampSelect" or now < self._fast_poll_until:
@@ -384,38 +421,6 @@ class GUIController(threading.Thread):
                 self.auto_hex.tick()
             except Exception as e:
                 print(f"[auto_hex] {e}")
-
-            # F6 - 分析海克斯
-            if keyboard.is_pressed('f6') and now - self._last_f6 > 1.0:
-                self._last_f6 = now
-                self.trigger_analyze()
-
-            # F7 - 刷新英雄（并开启一段时间的快速轮询）
-            if keyboard.is_pressed('f7') and now - self._last_f7 > 1.0:
-                self._last_f7 = now
-                self._fast_poll_until = now + 20
-                self._last_hero_poll = 0  # 立刻再检
-                self._gui(event="status", status="refreshing")
-                self.overlay_queue.put({"cmd": "STATUS", "data": "刷新英雄..."})
-                hero, source = self._try_auto_detect()
-                if hero and hero != self.current_hero:
-                    self._apply_hero_change(hero, source)
-                    self.overlay_queue.put({"cmd": "STATUS", "data": f"已切换: {hero}\n按 F6 分析"})
-                elif hero:
-                    self._gui(event="hero_confirmed", hero=hero)
-                    self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
-                else:
-                    self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {self.current_hero or '未知'}\n按 F6 分析"})
-
-            # F8 - 重新进入自动检测
-            if keyboard.is_pressed('f8') and now - self._last_f8 > 1.0:
-                self._last_f8 = now
-                print("F8: 重新进入自动检测阶段")
-                self._gui(event="status", status="resetting")
-                self.current_hero = None
-                self._clear_hero_dependent_state()
-                time.sleep(0.5)
-                return  # 退出 listening_phase, 回到 auto_detect
 
             time.sleep(0.05)
 
@@ -1119,19 +1124,24 @@ class LauncherApp:
                                      command=self._manual_set_hero)
         self.manual_btn.pack(side=tk.RIGHT)
 
-        # 热键提示
-        hotkey_frame = tk.Frame(hero_card, bg=self.BG_CARD)
-        hotkey_frame.pack(fill=tk.X, pady=(0, 8))
-        hotkeys = [("F6", "刷新识别"), ("F7", "识别英雄"), ("F8", "重置")]
-        for key, desc in hotkeys:
-            pill = tk.Frame(hotkey_frame, bg=self.BORDER, padx=1, pady=1)
-            pill.pack(side=tk.LEFT, padx=(0, 8))
-            inner = tk.Frame(pill, bg=self.BG_SEG, padx=8, pady=3)
-            inner.pack()
-            tk.Label(inner, text=key, font=("Consolas", 9, "bold"),
-                     fg=self.ACCENT, bg=self.BG_SEG).pack(side=tk.LEFT, padx=(0, 4))
-            tk.Label(inner, text=desc, font=("Microsoft YaHei", 9),
-                     fg=self.TEXT_DIM, bg=self.BG_SEG).pack(side=tk.LEFT)
+        # 操作按钮（原 F6/F7/F8 热键改为点击）
+        action_btns = tk.Frame(hero_card, bg=self.BG_CARD)
+        action_btns.pack(fill=tk.X, pady=(0, 8))
+        self.refresh_btn = ttk.Button(
+            action_btns, text="🔄 刷新识别", style='Secondary.TButton',
+            command=self._manual_refresh_ocr,
+        )
+        self.refresh_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
+        self.detect_hero_btn = ttk.Button(
+            action_btns, text="识别英雄", style='Secondary.TButton',
+            command=self._manual_refresh_hero,
+        )
+        self.detect_hero_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
+        self.reset_btn = ttk.Button(
+            action_btns, text="重置", style='Secondary.TButton',
+            command=self._manual_reset,
+        )
+        self.reset_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
         rune_toggle_row = tk.Frame(hero_card, bg=self.BG_CARD)
         rune_toggle_row.pack(fill=tk.X, pady=(0, 6))
@@ -1176,14 +1186,9 @@ class LauncherApp:
             command=lambda k=key, v=var: self._on_toggle(k, v),
         ).pack(side=tk.LEFT)
 
-        self.refresh_btn = ttk.Button(hex_row, text="🔄 刷新识别",
-                                      style='Secondary.TButton',
-                                      command=self._manual_refresh_ocr)
-        self.refresh_btn.pack(side=tk.RIGHT)
-
         tk.Label(
             hex_card,
-            text="死亡/泉水选牌 UI · Lv1/7/11/15 · 选项刷新后自动重推荐；也可 F6",
+            text="死亡/泉水选牌 UI · Lv1/7/11/15 · 选项刷新后自动重推荐；也可点上方「刷新识别」",
             font=("Microsoft YaHei", 8),
             fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
         ).pack(fill=tk.X)
@@ -1386,7 +1391,7 @@ class LauncherApp:
 
             self.engine_running = True
             self._set_status("运行中", self.SUCCESS)
-            self._log("✅ 引擎已启动! F6=刷新识别 | F7=识别 | F8=重置 | 自动海克斯: 死亡/泉水/检查点/选项刷新")
+            self._log("✅ 引擎已启动! 点击「刷新识别 / 识别英雄 / 重置」；自动海克斯: 死亡/泉水/检查点/选项刷新")
             if self.settings.get("overlay_topmost", True) and self.overlay_window:
                 try:
                     self.overlay_window.attributes("-topmost", True)
@@ -1487,7 +1492,7 @@ class LauncherApp:
             messagebox.showinfo("提示", "请先点击「开始识别」再最小化到托盘")
             return
         self.root.withdraw()
-        self.tray.notify("nho有手就行", "程序已最小化到系统托盘，热键仍然有效")
+        self.tray.notify("nho有手就行", "程序已最小化到系统托盘，可从托盘恢复主界面点击操作")
         # 确保 overlay 仍然可见
         if self.overlay_window:
             self.root.after(100, self._ensure_overlay_visible)
@@ -1687,8 +1692,22 @@ class LauncherApp:
         if not self.controller or not self.engine_running:
             self._log("⚠ 请先点击「开始识别」")
             return
-        self._log("手动刷新识别…")
+        self._log("点击刷新识别…")
         threading.Thread(target=self.controller.trigger_analyze, daemon=True).start()
+
+    def _manual_refresh_hero(self):
+        if not self.controller or not self.engine_running:
+            self._log("⚠ 请先点击「开始识别」")
+            return
+        self._log("点击识别英雄…")
+        threading.Thread(target=self.controller.trigger_refresh_hero, daemon=True).start()
+
+    def _manual_reset(self):
+        if not self.controller or not self.engine_running:
+            self._log("⚠ 请先点击「开始识别」")
+            return
+        self._log("点击重置：重新自动检测英雄…")
+        self.controller.request_reset()
 
     def _manual_apply_runes(self):
         if not self.controller or not self.engine_running:
@@ -1853,8 +1872,7 @@ def main():
                 "权限提示",
                 "⚠ 当前未以管理员身份运行。\n\n"
                 "以下功能可能无法正常工作:\n"
-                "• 自动识别英雄联盟客户端\n"
-                "• 全局热键 (F6/F7/F8)\n\n"
+                "• 自动识别英雄联盟客户端 (LCU / lockfile)\n\n"
                 "点击「是」以管理员身份重新启动\n"
                 "点击「否」继续以普通用户运行"
             )

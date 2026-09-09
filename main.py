@@ -343,7 +343,7 @@ class GameAnalyzer:
         self._warmup()
 
     def _warmup(self):
-        """用小图预热 OCR 引擎, 消除首次 F6 的冷启动延迟"""
+        """用小图预热 OCR 引擎, 消除首次手动刷新识别的冷启动延迟"""
         try:
             dummy = np.zeros((48, 320), dtype=np.uint8)
             self.ocr(dummy)
@@ -639,7 +639,8 @@ class InputController(threading.Thread):
         self.flush_input()
 
         print("=== ARAM Hextech Helper ===")
-        print("    F6=分析 | F7=刷新英雄 | F8=手动输入\n")
+        print("    [控制台] F6=分析 | F7=刷新英雄 | F8=手动输入\n"
+          "    (GUI 请用界面「刷新识别 / 识别英雄 / 重置」)\n")
 
         # ====== 尝试自动检测 (轮询最多30秒) ======
         if self.lcu:
