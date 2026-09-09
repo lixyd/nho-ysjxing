@@ -285,6 +285,37 @@ class GUIController(threading.Thread):
                 pass
         self._gui(event="rune_info", text="", hero=self.current_hero)
 
+    def _forget_match_hero(self, reason: str = "", *, force_ui: bool = False):
+        """局间清理：丢掉上场英雄，强制下一轮重新识别（不需重启/手动重置）。"""
+        had = self.current_hero
+        self._champ_select_locked = False
+        self._runes_applied_on_lock = False
+        self._last_hero_poll = 0.0
+        self._fast_poll_until = max(self._fast_poll_until, time.time() + 45)
+        if not had and not force_ui:
+            return False
+        self.current_hero = None
+        self._clear_hero_dependent_state()
+        waiting = "等待识别本局英雄"
+        self._gui(event="hero_cleared", label=waiting)
+        self._gui(event="rune_info", text="符文: 等待识别本局英雄", hero=None, cleared=True)
+        self._gui(event="status", status="waiting", hero=waiting)
+        try:
+            self.overlay_queue.put({"cmd": "CLEAR"})
+            self.overlay_queue.put({
+                "cmd": "STATUS",
+                "data": f"{waiting}\n自动接受后将重新识别",
+            })
+        except Exception:
+            pass
+        if had:
+            msg = f"已清除上场英雄 [{had}]，等待本局识别"
+            if reason:
+                msg = f"{reason} — {msg}"
+            print(msg)
+            self._gui(event="log", text=msg)
+        return True
+
     def _apply_hero_change(self, hero, source, *, from_manual=False):
         """统一处理英雄变更：清状态 → 更新 → 刷符文。"""
         old = self.current_hero
@@ -465,25 +496,40 @@ class GUIController(threading.Thread):
                 time.sleep(0.3)
                 return  # 退出 listening_phase, 回到 auto_detect
 
-            # 阶段变化: 进入新对局时重置自动海克斯；结束时清推荐/藏 FAB
+            # 阶段变化: 进入新对局时重置自动海克斯；结束时清推荐/藏 FAB；局间丢掉上场英雄
             try:
                 if self.lcu and self.lcu.is_connected():
                     phase = self.lcu.get_gameflow_phase()
                     if phase != self._last_phase:
-                        if phase == "InProgress" and self._last_phase != "InProgress":
+                        prev = self._last_phase
+                        if phase == "InProgress" and prev != "InProgress":
                             self.auto_hex.reset_match()
-                        if phase in ("EndOfGame", "WaitingForStats", "Lobby", "None",
-                                     "ChampSelect", "Matchmaking", "ReadyCheck", "GameStart"):
-                            if self._last_phase == "InProgress" or self._hex_ingame:
+                        between_phases = (
+                            "EndOfGame", "WaitingForStats", "Lobby", "None",
+                            "Matchmaking", "ReadyCheck",
+                        )
+                        if phase in between_phases or phase in (
+                            "ChampSelect", "GameStart",
+                        ):
+                            if prev == "InProgress" or self._hex_ingame:
                                 self._leave_hex_session(
                                     "对局结束" if phase in ("EndOfGame", "WaitingForStats")
                                     else "已离开对局"
                                 )
+                        # 离开对局 / 回到大厅排队：清除 sticky current_hero
+                        if phase in between_phases:
+                            if prev in (
+                                "InProgress", "GameStart", "ChampSelect",
+                                "EndOfGame", "WaitingForStats",
+                            ) or self.current_hero:
+                                self._forget_match_hero("局间清理")
                         if phase == "ChampSelect":
                             self._fast_poll_until = max(self._fast_poll_until, now + 45)
                             self._champ_select_locked = False
                             self._runes_applied_on_lock = False
-                        elif self._last_phase == "ChampSelect":
+                            # 每次进入选人：本局重新识别，勿沿用上场英雄
+                            self._forget_match_hero("进入选人", force_ui=True)
+                        elif prev == "ChampSelect":
                             # 离开选人：停止按 intent 高频轮询 / 不再定时套符文
                             self._champ_select_locked = False
                             self._runes_applied_on_lock = False
@@ -512,12 +558,25 @@ class GUIController(threading.Thread):
                 if now - self._last_hero_poll >= poll_every:
                     self._last_hero_poll = now
                     hero, source = self._try_auto_detect()
+                    # 局间/选人：忽略 GameFlow/Live 上场残留，只认 ChampSelect
+                    if phase in (
+                        "EndOfGame", "WaitingForStats", "Lobby", "None",
+                        "Matchmaking", "ReadyCheck", "ChampSelect",
+                    ) and source in ("GameFlow", "Live API"):
+                        hero, source = None, source
                     if hero and hero != self.current_hero:
                         self._apply_hero_change(hero, source)
+                    # ChampSelect 返回 None 时保持「等待识别」UI（局间已 clear），
+                    # 勿在短暂 API 空档把刚识别到的本局英雄清掉。
 
-                    # 选人锁定边沿：championId>0；intent  alone 不算锁定
+                    # 选人锁定边沿：championId>0；intent alone 不算锁定
                     if phase == "ChampSelect" and self.lcu and self.lcu.is_connected():
                         pick_hero, pick_locked = self.lcu.get_champ_select_pick_state()
+                        if pick_hero and pick_hero != self.current_hero:
+                            self._apply_hero_change(
+                                pick_hero,
+                                "ChampSelect锁定" if pick_locked else "ChampSelect",
+                            )
                         if pick_locked and not self._champ_select_locked:
                             self._champ_select_locked = True
                             lock_hero = pick_hero or self.current_hero
@@ -1683,21 +1742,27 @@ class LauncherApp:
         elif event == "hero_found":
             hero = msg.get("hero", "")
             source = msg.get("source", "")
-            self.hero_var.set(hero)
+            self.hero_var.set(hero or "—")
             if source == "手动输入":
                 self._set_status("监听中", self.SUCCESS)
             else:
                 self._set_status("监听中", self.SUCCESS)
-            self.tray.notify("英雄已识别", f"当前英雄: {hero}")
+            if hero:
+                self.tray.notify("英雄已识别", f"当前英雄: {hero}")
+
+        elif event == "hero_cleared":
+            label = msg.get("label") or "等待识别本局英雄"
+            self.hero_var.set(label)
+            self.rune_info_var.set("符文: 等待识别本局英雄")
 
         elif event == "hero_confirmed":
-            self.hero_var.set(msg.get("hero", ""))
+            self.hero_var.set(msg.get("hero", "") or "—")
 
         elif event == "status":
             status = msg.get("status", "")
-            hero = msg.get("hero")
-            if hero:
-                self.hero_var.set(hero)
+            if "hero" in msg:
+                hero = msg.get("hero")
+                self.hero_var.set(hero if hero else "等待识别本局英雄")
             status_map = {
                 "connecting":       ("连接客户端...", self.WARNING),
                 "waiting":          ("等待选取英雄...", self.WARNING),
@@ -1734,9 +1799,12 @@ class LauncherApp:
 
         elif event == "rune_info":
             info = msg.get("text", "")
-            # 单行摘要
-            first = info.splitlines()[0] if info else ""
-            self.rune_info_var.set(first or "符文推荐已更新")
+            if msg.get("cleared"):
+                self.rune_info_var.set(info or "符文: 等待识别本局英雄")
+            else:
+                # 单行摘要
+                first = info.splitlines()[0] if info else ""
+                self.rune_info_var.set(first or "符文推荐已更新")
 
         elif event == "countdown":
             self._set_countdown_ui(msg.get("seconds"), msg.get("label") or "")

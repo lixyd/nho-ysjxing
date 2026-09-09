@@ -715,6 +715,7 @@ class InputController(threading.Thread):
         self.analyzer = analyzer
         self.lcu = lcu_connector
         self.current_hero = None
+        self._last_phase = None
         self._last_f6 = 0
         self._last_f7 = 0
         self._last_f8 = 0
@@ -854,12 +855,51 @@ class InputController(threading.Thread):
     # 阶段2: 监听热键
     # ==========================================
 
+    def _forget_match_hero(self, reason: str = ""):
+        """局间清理 sticky 英雄，避免上场名残留到下一局。"""
+        had = self.current_hero
+        if not had:
+            return
+        self.current_hero = None
+        msg = f"已清除上场英雄 [{had}]，等待本局识别"
+        if reason:
+            msg = f"{reason} — {msg}"
+        print(f">>> {msg}")
+        self.queue.put({"cmd": "STATUS", "data": "等待识别本局英雄\n按 F7 刷新"})
+
     def listening_phase(self):
         self.flush_input()
         print(f"[监听中...] 当前英雄: {self.current_hero} | F6分析 / F7刷新 / F8手动")
 
         while True:
             now = time.time()
+
+            # 局间阶段变化：丢掉上场英雄，下一局重新识别
+            try:
+                if self.lcu and self.lcu.is_connected():
+                    phase = self.lcu.get_gameflow_phase()
+                    if phase != self._last_phase:
+                        prev = self._last_phase
+                        between = (
+                            "EndOfGame", "WaitingForStats", "Lobby", "None",
+                            "Matchmaking", "ReadyCheck",
+                        )
+                        if phase in between:
+                            if prev in (
+                                "InProgress", "GameStart", "ChampSelect",
+                                "EndOfGame", "WaitingForStats",
+                            ) or self.current_hero:
+                                self._forget_match_hero("局间清理")
+                        if phase == "ChampSelect":
+                            self._forget_match_hero("进入选人")
+                            if not self.current_hero:
+                                self.queue.put({
+                                    "cmd": "STATUS",
+                                    "data": "等待识别本局英雄\n按 F7 刷新",
+                                })
+                        self._last_phase = phase
+            except Exception:
+                pass
 
             if keyboard.is_pressed('f6') and now - self._last_f6 > 1.0:
                 self._last_f6 = now
@@ -894,6 +934,16 @@ class InputController(threading.Thread):
                 # F7: 全阶段刷新英雄 (ChampSelect / InProgress / LiveAPI)
                 self.queue.put({"cmd": "STATUS", "data": "刷新英雄..."})
                 hero, source = self._try_auto_detect()
+                # 局间勿把 GameFlow/Live 上场残留当成当前英雄
+                phase = self._last_phase
+                if (
+                    phase in (
+                        "EndOfGame", "WaitingForStats", "Lobby", "None",
+                        "Matchmaking", "ReadyCheck", "ChampSelect",
+                    )
+                    and source in ("GameFlow", "Live API")
+                ):
+                    hero, source = None, source
                 if hero and hero != self.current_hero:
                     old = self.current_hero
                     self.current_hero = hero
@@ -902,7 +952,9 @@ class InputController(threading.Thread):
                 elif hero:
                     self.queue.put({"cmd": "STATUS", "data": f"当前英雄: {hero}\n按 F6 分析"})
                 else:
-                    self.queue.put({"cmd": "STATUS", "data": f"当前: {self.current_hero}\n按 F6 分析"})
+                    label = self.current_hero or "等待识别本局英雄"
+                    self.queue.put({"cmd": "STATUS", "data": f"当前: {label}\n按 F7 刷新"})
+
 
             if keyboard.is_pressed('f8') and now - self._last_f8 > 1.0:
                 self._last_f8 = now

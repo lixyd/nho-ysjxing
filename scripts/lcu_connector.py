@@ -478,9 +478,8 @@ class LCUConnector:
         """
         全生命周期自动获取当前英雄。
 
-        不依赖 phase 卡死：始终按
-          ChampSelect → GameFlow → Live → ChampSelect again
-        尝试；骰子换人后也不会永久粘在旧英雄上（由上层轮询刷新）。
+        按 gameflow phase 分流，避免 EndOfGame/Lobby/Matchmaking 时
+        GameFlow/Live 仍返回上场英雄，导致 UI sticky 在旧英雄上。
 
         Returns:
             (str | None, str): (英雄中文名, 数据来源)
@@ -490,27 +489,30 @@ class LCUConnector:
                 hero = self.get_ingame_champion()
                 return (hero, "Live API") if hero else (None, "")
 
-        # 1) ChampSelect（含 intent / reroll）
-        hero = self.get_champ_select_champion()
-        if hero:
-            return hero, "ChampSelect"
-
-        # 2) GameFlow session
-        hero = self.get_gameflow_champion()
-        if hero:
-            return hero, "GameFlow"
-
-        # 3) Live Client
-        hero = self.get_ingame_champion()
-        if hero:
-            return hero, "Live API"
-
-        # 4) 再试 ChampSelect（phase 延迟 / 骰子后短暂不同步）
-        hero = self.get_champ_select_champion()
-        if hero:
-            return hero, "ChampSelect"
-
         phase = self.get_gameflow_phase()
+
+        # 选人：只认 ChampSelect（含 intent / reroll），勿回落 GameFlow 上场残留
+        if phase == "ChampSelect":
+            hero = self.get_champ_select_champion()
+            return (hero, "ChampSelect") if hero else (None, "ChampSelect")
+
+        # 对局中：GameFlow → Live → ChampSelect 兜底
+        if phase in ("InProgress", "GameStart"):
+            hero = self.get_gameflow_champion()
+            if hero:
+                return hero, "GameFlow"
+            hero = self.get_ingame_champion()
+            if hero:
+                return hero, "Live API"
+            hero = self.get_champ_select_champion()
+            if hero:
+                return hero, "ChampSelect"
+            return None, phase or ""
+
+        # 局间（大厅/排队/结算等）：不返回 GameFlow/Live 上场残留
+        hero = self.get_champ_select_champion()
+        if hero:
+            return hero, "ChampSelect"
         return None, phase or ""
 
     # ==========================================
