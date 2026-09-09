@@ -482,20 +482,108 @@ class GameAnalyzer:
 # ================= 3. UI 界面 (View) =================
 
 class OverlayApp:
-    def __init__(self, root, queue):
+    def __init__(self, root, queue, on_manual_refresh=None):
         self.root = root
         self.queue = queue
         self.labels = {}
         self.hide_timer = None
+        self.on_manual_refresh = on_manual_refresh
+        self._refresh_fab = None
+        self._fab_label = None
         
         # 先隐藏窗口，避免配置透明前闪白框
         self.root.withdraw()
         self._setup_window()
         self._setup_labels()
         self.root.deiconify()
+
+        # 左上角独立小窗按钮（不穿透）；主 overlay 仍保持鼠标穿透
+        if self.on_manual_refresh:
+            self._create_refresh_fab()
         
         # 启动队列消息监听
         self.root.after(100, self.process_queue)
+
+    def set_manual_refresh(self, callback):
+        """运行中绑定/更换手动刷新回调（CLI 可在 controller 就绪后调用）。"""
+        self.on_manual_refresh = callback
+        if callback and self._refresh_fab is None:
+            self._create_refresh_fab()
+
+    def _create_refresh_fab(self):
+        """游戏画面左上角置顶「刷新」按钮，点击=手动刷新识别。"""
+        try:
+            fab = tk.Toplevel(self.root)
+            fab.overrideredirect(True)
+            fab.attributes("-topmost", True)
+            try:
+                fab.attributes("-alpha", 0.92)
+            except Exception:
+                pass
+            fab.configure(bg="#1a1520")
+            # 与主 overlay 同屏左上角，略偏内，避免贴边难点
+            ox = getattr(self, "offset_x", 0) + 12
+            oy = getattr(self, "offset_y", 0) + 12
+            fab.geometry(f"+{ox}+{oy}")
+
+            lbl = tk.Label(
+                fab,
+                text="🔄 刷新",
+                font=("Microsoft YaHei", 9, "bold"),
+                fg="#f0c75e",
+                bg="#2b2433",
+                padx=10,
+                pady=5,
+                cursor="hand2",
+                relief="ridge",
+                bd=1,
+            )
+            lbl.pack()
+            lbl.bind("<Button-1>", self._on_fab_click)
+            fab.bind("<Button-1>", self._on_fab_click)
+            self._refresh_fab = fab
+            self._fab_label = lbl
+        except Exception as e:
+            print(f"刷新浮钮创建失败: {e}")
+            self._refresh_fab = None
+            self._fab_label = None
+
+    def _on_fab_click(self, event=None):
+        if not self.on_manual_refresh:
+            return
+        lbl = self._fab_label
+        if lbl is not None:
+            try:
+                lbl.config(text="识别中…", fg="#ffffff", bg="#4a3f1a")
+            except Exception:
+                pass
+        try:
+            self.on_manual_refresh()
+        except Exception as e:
+            print(f"刷新浮钮: {e}")
+
+        def _restore():
+            if self._fab_label is None:
+                return
+            try:
+                self._fab_label.config(text="🔄 刷新", fg="#f0c75e", bg="#2b2433")
+            except Exception:
+                pass
+        try:
+            self.root.after(1000, _restore)
+        except Exception:
+            pass
+
+    def ensure_fab_visible(self):
+        """托盘/切窗后保持浮钮置顶可见。"""
+        if not self._refresh_fab:
+            return
+        try:
+            self._refresh_fab.deiconify()
+            self._refresh_fab.attributes("-topmost", True)
+            self._refresh_fab.lift()
+        except Exception:
+            pass
 
     def _setup_window(self):
         self.root.title("ARAM Overlay")
@@ -828,6 +916,18 @@ def main():
     # 4. 启动后台控制线程
     controller = InputController(msg_queue, dm, analyzer, lcu_connector=lcu)
     controller.start()
+
+    def _overlay_manual_refresh():
+        def _run():
+            if not controller.current_hero:
+                msg_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n按 F7 / F8"})
+                return
+            msg_queue.put({"cmd": "STATUS", "data": f"🔎 分析 [{controller.current_hero}]..."})
+            results = analyzer.analyze(controller.current_hero)
+            msg_queue.put({"cmd": "UPDATE", "data": results})
+        threading.Thread(target=_run, daemon=True).start()
+
+    app.set_manual_refresh(_overlay_manual_refresh)
     
     # 4. 进入 UI 主循环
     print("程序已启动...")

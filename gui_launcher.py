@@ -105,6 +105,8 @@ class GUIController(threading.Thread):
         self._last_phase = None
         self._last_hero_poll = 0.0
         self._fast_poll_until = 0.0  # 识别英雄 / ChampSelect 后加速轮询
+        self._champ_select_locked = False  # championId>0 才算锁定
+        self._runes_applied_on_lock = False
 
         self.matchmaking = MatchmakingService(
             lcu_connector,
@@ -220,6 +222,8 @@ class GUIController(threading.Thread):
                 self.auto_hex._idle_until_next = False
                 self.auto_hex._pending_cp = None
                 self.auto_hex._pending_reason = None
+                self.auto_hex._pick_cycle_active = False
+                # 换英雄不清除本局检查点欠账 / _fired（仍由 reset_match 管）
             except Exception:
                 pass
         self._gui(event="rune_info", text="", hero=self.current_hero)
@@ -303,15 +307,27 @@ class GUIController(threading.Thread):
         self._gui(event="log", text=msg)
         return ok, msg
 
-    def _maybe_show_runes(self, hero):
+    def _maybe_show_runes(self, hero, *, apply=None):
+        """刷新符文展示；apply 默认跟随 auto_apply_runes 设置。"""
         page, source = self.rune_service.recommend(hero)
         summary = self.rune_service.format_summary(page, source)
         print(summary)
         self._gui(event="rune_info", text=summary, hero=hero)
-        if self.settings.get("auto_apply_runes"):
+        do_apply = self.settings.get("auto_apply_runes") if apply is None else apply
+        if do_apply:
             ok, msg = self.rune_service.apply(page)
             print(msg)
             self._gui(event="log", text=msg)
+
+    def _on_champ_select_lock(self, hero):
+        """检测到锁定（championId>0）：再套用一次符文；之后不再定时重套。"""
+        if not hero:
+            return
+        if self._runes_applied_on_lock:
+            return
+        self._runes_applied_on_lock = True
+        # 展示刷新；若开启自动套用则在锁定时再套一次（intent 阶段可能已套过）
+        self._maybe_show_runes(hero)
 
     # ---------- 阶段1: 自动检测英雄 ----------
 
@@ -342,13 +358,14 @@ class GUIController(threading.Thread):
                 break
 
             self._gui(event="status", status="waiting", attempt=attempt)
-            # ChampSelect 下更快轮询 pick intent / 骰子
+            # ChampSelect 未锁定时更快轮询 pick intent / 骰子
             sleep_s = 0.75
             try:
                 if self.lcu and self.lcu.is_connected():
                     phase = self.lcu.get_gameflow_phase()
                     if phase == "ChampSelect":
-                        sleep_s = 0.6
+                        _h, locked = self.lcu.get_champ_select_pick_state()
+                        sleep_s = 0.55 if not locked else 0.9
                     elif phase in ("InProgress", "GameStart"):
                         sleep_s = 1.0
                     else:
@@ -395,15 +412,24 @@ class GUIController(threading.Thread):
                                 self.auto_hex.reset_match()
                         if phase == "ChampSelect":
                             self._fast_poll_until = max(self._fast_poll_until, now + 45)
+                            self._champ_select_locked = False
+                            self._runes_applied_on_lock = False
+                        elif self._last_phase == "ChampSelect":
+                            # 离开选人：停止按 intent 高频轮询 / 不再定时套符文
+                            self._champ_select_locked = False
+                            self._runes_applied_on_lock = False
                         self._last_phase = phase
             except Exception:
                 pass
 
-            # 周期性英雄重检：ChampSelect / 识别英雄后加速，对局中也能跟上骰子换人
+            # 周期性英雄重检：ChampSelect 未锁定更快；锁定/离选人后放慢；对局中跟上骰子
             try:
                 phase = self._last_phase
-                if phase == "ChampSelect" or now < self._fast_poll_until:
-                    poll_every = 0.7
+                locked = self._champ_select_locked
+                if phase == "ChampSelect" and not locked:
+                    poll_every = 0.55
+                elif phase == "ChampSelect" or now < self._fast_poll_until:
+                    poll_every = 1.0
                 elif phase in ("InProgress", "GameStart"):
                     poll_every = 2.0
                 else:
@@ -413,6 +439,19 @@ class GUIController(threading.Thread):
                     hero, source = self._try_auto_detect()
                     if hero and hero != self.current_hero:
                         self._apply_hero_change(hero, source)
+
+                    # 选人锁定边沿：championId>0；intent  alone 不算锁定
+                    if phase == "ChampSelect" and self.lcu and self.lcu.is_connected():
+                        pick_hero, pick_locked = self.lcu.get_champ_select_pick_state()
+                        if pick_locked and not self._champ_select_locked:
+                            self._champ_select_locked = True
+                            lock_hero = pick_hero or self.current_hero
+                            if lock_hero and lock_hero != self.current_hero:
+                                self._apply_hero_change(lock_hero, "ChampSelect锁定")
+                            self._on_champ_select_lock(self.current_hero or lock_hero)
+                        elif not pick_locked:
+                            self._champ_select_locked = False
+                            self._runes_applied_on_lock = False
             except Exception as e:
                 print(f"[hero_poll] {e}")
 
@@ -1188,7 +1227,7 @@ class LauncherApp:
 
         tk.Label(
             hex_card,
-            text="死亡/泉水选牌 UI · Lv1/7/11/15 · 选项刷新后自动重推荐；也可点上方「刷新识别」",
+            text="检查点未开窗先记欠账，死亡/UI 再兑现 · 选牌中持续刷新至选定 · 也可点左上角「刷新」或面板「刷新识别」",
             font=("Microsoft YaHei", 8),
             fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
         ).pack(fill=tk.X)
@@ -1377,7 +1416,12 @@ class LauncherApp:
 
             # 创建 overlay 作为 Toplevel
             self.overlay_window = tk.Toplevel(self.root)
-            self.overlay = OverlayApp(self.overlay_window, self.overlay_queue)
+            # 浮钮回调与控制面板「刷新识别」相同；主 overlay 仍鼠标穿透
+            self.overlay = OverlayApp(
+                self.overlay_window,
+                self.overlay_queue,
+                on_manual_refresh=self._manual_refresh_ocr,
+            )
 
             # 启动后台控制器
             self.rune_service.set_lcu(self.lcu)
@@ -1391,7 +1435,7 @@ class LauncherApp:
 
             self.engine_running = True
             self._set_status("运行中", self.SUCCESS)
-            self._log("✅ 引擎已启动! 点击「刷新识别 / 识别英雄 / 重置」；自动海克斯: 死亡/泉水/检查点/选项刷新")
+            self._log("✅ 引擎已启动! 点击「刷新识别 / 识别英雄 / 重置」；自动海克斯: 检查点欠账→死亡/UI 兑现 · 选牌中持续刷新至选定")
             if self.settings.get("overlay_topmost", True) and self.overlay_window:
                 try:
                     self.overlay_window.attributes("-topmost", True)
@@ -1503,6 +1547,11 @@ class LauncherApp:
             try:
                 self.overlay_window.deiconify()
                 self.overlay_window.attributes("-topmost", True)
+            except Exception:
+                pass
+        if self.overlay:
+            try:
+                self.overlay.ensure_fab_visible()
             except Exception:
                 pass
 

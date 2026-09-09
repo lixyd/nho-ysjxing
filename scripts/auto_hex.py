@@ -6,6 +6,16 @@
   2. Live Client 等级跨过检查点 1 / 7 / 11 / 15
   3. 现有 hex OCR 区域扫到疑似海克斯 UI 文字（能选牌的界面）
 
+检查点「欠账」(owed):
+  - 到达 Lv 检查点但选牌 UI 尚不可用（未死亡/未打开）时，只记欠账，不标完成、不狂刷 OCR
+  - 之后死亡/泉水 或 选牌 UI 出现时兑现欠账：开始识别，并在 UI 仍打开时持续刷新
+  - UI 消失（已选定）后清除欠账并标记该检查点完成；同一检查点只欠/兑现一次
+  - 无欠账时的死亡选牌仍独立工作
+
+选牌 UI 可见期间持续刷新:
+  - 首次识别成功后，只要选牌 UI 仍在，按冷却间隔持续重跑 OCR/分析
+  - UI 消失后停止高频刷新
+
 刷新后重推荐:
   - 三张选项 OCR 文本相对上次快照变化 → debounce(~0.7s) 后立即重识别并提醒
   - 手动「刷新识别」按钮 → 立即重识别并提醒「刷新后已更新推荐」
@@ -23,6 +33,10 @@ from scripts.config import HEX_LEVEL_CHECKPOINTS
 # 选项变化 debounce / 自动分析冷却（秒）
 OPTION_CHANGE_DEBOUNCE = 0.7
 AUTO_ANALYZE_COOLDOWN = 1.5
+# 选牌 UI 仍在时持续刷新间隔（尊重冷却，避免 OCR 打满 CPU）
+UI_KEEP_REFRESH_INTERVAL = 1.5
+# 欠账等待期间轻量重试间隔（不挂 pending，避免全量 OCR 空转）
+OWED_LIGHT_WAIT = 2.0
 POLL_INTERVAL = 0.55
 
 
@@ -50,9 +64,10 @@ class AutoHexWatcher:
         self.enabled = enabled
 
         self._fired: Set[int] = set()
+        self._owed: Set[int] = set()  # 欠账检查点（UI 未开时记下，稍后兑现）
         self._last_level = 0
         self._idle_until_next = False  # 检查点选完后等待下一检查点（仍可响应死亡/刷新）
-        self._pending_cp: Optional[int] = None
+        self._pending_cp: Optional[int] = None  # 正在兑现的检查点
         self._pending_reason: Optional[str] = None
         self._last_poll = 0.0
         self._last_analyze = 0.0
@@ -65,6 +80,8 @@ class AutoHexWatcher:
         self._last_option_snapshot: Optional[str] = None
         self._option_change_since: Optional[float] = None
         self._ui_was_visible = False
+        # 本轮选牌已出过有效推荐；UI 消失后结算欠账 / 结束持续刷新
+        self._pick_cycle_active = False
 
     def set_enabled(self, value: bool):
         self.enabled = bool(value)
@@ -72,6 +89,7 @@ class AutoHexWatcher:
     def reset_match(self):
         """新对局开始时重置。"""
         self._fired.clear()
+        self._owed.clear()
         self._last_level = 0
         self._idle_until_next = False
         self._pending_cp = None
@@ -83,6 +101,7 @@ class AutoHexWatcher:
         self._last_option_snapshot = None
         self._option_change_since = None
         self._ui_was_visible = False
+        self._pick_cycle_active = False
 
     def _status(self, msg: str):
         print(msg)
@@ -98,6 +117,52 @@ class AutoHexWatcher:
                 self.on_refresh_reminder()
             except Exception:
                 pass
+
+    def _owe_checkpoint(self, cp: int):
+        """记录欠账；同一检查点只欠一次，已完成的不再欠。"""
+        if cp in self._fired or cp in self._owed:
+            return
+        self._owed.add(cp)
+        self._idle_until_next = False
+        self._status(f"⚡ 到达海克斯检查点 Lv.{cp}，选牌窗口未开 — 已记欠账，待死亡/泉水或 UI 出现后兑现…")
+
+    def _redeem_owed_if_ready(self, *, is_dead: bool, ui_visible: bool, source: str):
+        """死亡/泉水或选牌 UI 出现时兑现欠账。"""
+        if not self._owed:
+            return False
+        if not (is_dead or ui_visible):
+            return False
+        # 取最高未完成欠账（等级只增；多欠时先兑现最大）
+        unpaid = [cp for cp in self._owed if cp not in self._fired]
+        if not unpaid:
+            self._owed.clear()
+            return False
+        cp = max(unpaid)
+        self._pending_cp = cp
+        self._idle_until_next = False
+        self._retry_after = 0.0
+        self._queue_reason("checkpoint")
+        self._status(f"💎 兑现检查点 Lv.{cp}（{source}），开始识别…")
+        return True
+
+    def _settle_pick_cycle_on_ui_gone(self):
+        """选牌 UI 消失：若本轮已出推荐，则完成欠账并停止持续刷新。"""
+        if self._pending_reason == "ui_keep":
+            self._pending_reason = None
+        if not self._pick_cycle_active:
+            return
+        self._pick_cycle_active = False
+        if self._pending_cp is not None:
+            cp = self._pending_cp
+            self._fired.add(cp)
+            self._owed.discard(cp)
+            self._status(f"✅ 检查点 Lv.{cp} 选牌完成（欠账已清）")
+            self._pending_cp = None
+            self._arm_idle_watch()
+        elif self._owed and not self._pending_cp:
+            # 死亡/UI 周期结束但无绑定检查点：不改 owed
+            pass
+        self._death_cycle_fired = True
 
     def tick(self):
         """由控制器主循环频繁调用。"""
@@ -121,22 +186,26 @@ class AutoHexWatcher:
         prev = self._last_level
         self._last_level = level
 
-        # ---- 死亡边沿：新一轮死亡 → 可自动选牌（泉水代理）----
-        if is_dead and not self._was_dead:
+        # ---- 死亡边沿：新一轮死亡 → 兑现欠账或独立死亡选牌 ----
+        death_edge = is_dead and not self._was_dead
+        if death_edge:
             self._death_cycle_fired = False
-            self._status("💀 检测到死亡/回泉水窗口，准备自动识别海克斯…")
-            self._queue_reason("death")
+            self._pick_cycle_active = False
+            if not self._redeem_owed_if_ready(is_dead=True, ui_visible=False, source="死亡/泉水"):
+                self._status("💀 检测到死亡/回泉水窗口，准备自动识别海克斯…")
+                self._queue_reason("death")
         elif not is_dead and self._was_dead:
             self._death_cycle_fired = False
         self._was_dead = is_dead
 
-        # ---- 等级检查点 ----
+        # ---- 等级检查点：UI 未开则只记欠账，不狂刷 OCR ----
         newly = []
         for cp in self.checkpoints:
-            if cp not in self._fired and prev < cp <= level:
+            if cp not in self._fired and cp not in self._owed and prev < cp <= level:
                 newly.append(cp)
             if (
                 cp not in self._fired
+                and cp not in self._owed
                 and level >= cp
                 and prev == 0
                 and cp == self.checkpoints[0]
@@ -145,39 +214,56 @@ class AutoHexWatcher:
                     newly.append(cp)
         if newly:
             cp = max(newly)
-            self._pending_cp = cp
-            self._idle_until_next = False
-            self._retry_after = 0.0
-            self._queue_reason("checkpoint")
-            self._status(f"⚡ 到达海克斯检查点 Lv.{cp}，准备自动识别…")
+            self._owe_checkpoint(cp)
+            # 已在死亡/泉水中则立刻尝试兑现（不等下一次死亡边沿）
+            if is_dead:
+                self._redeem_owed_if_ready(
+                    is_dead=True, ui_visible=False, source="死亡/泉水"
+                )
 
-        # ---- OCR：选牌窗口探测 + 选项刷新检测 ----
+        # ---- OCR：仅在可能选牌时全量；欠账等待期用轻量抽查 ----
+        awaiting_pick = bool(self._owed) or self._pending_reason is not None or self._pick_cycle_active
         want_full = (
             is_dead
             or self._pending_reason is not None
             or self._ui_was_visible
             or self._option_change_since is not None
             or self._last_option_snapshot is not None
+            or self._pick_cycle_active
         )
         snapshot = None
         ui_visible = False
         if want_full:
             snapshot, ui_visible = self._snapshot_options()
+        elif awaiting_pick:
+            # 欠账中：偶尔轻量探测 UI，避免全量三区 OCR 空转
+            if now >= self._retry_after and self._detect_hex_ui_quick():
+                snapshot, ui_visible = self._snapshot_options()
+            elif now >= self._retry_after:
+                self._retry_after = now + OWED_LIGHT_WAIT
         else:
-            # 战斗中轻量抽查中间区；一旦出现 UI 再切全量快照
             if self._detect_hex_ui_quick():
                 snapshot, ui_visible = self._snapshot_options()
 
+        # UI 出现：兑现欠账；无欠账则普通 UI 触发
         if ui_visible and not self._ui_was_visible:
-            if self._pending_reason is None:
+            if self._owed:
+                self._redeem_owed_if_ready(
+                    is_dead=is_dead, ui_visible=True, source="选牌 UI"
+                )
+            elif self._pending_reason is None:
                 self._queue_reason("ui")
                 self._status("🧿 检测到海克斯选牌 UI，准备自动识别…")
         self._ui_was_visible = ui_visible
 
         if ui_visible and snapshot:
             if self._last_option_snapshot is None:
-                if self._pending_reason is None:
+                if self._pending_reason is None and not self._owed:
                     self._queue_reason("ui")
+                elif self._owed and self._pending_reason is None:
+                    self._redeem_owed_if_ready(
+                        is_dead=is_dead, ui_visible=True, source="选牌 UI"
+                    )
             elif snapshot != self._last_option_snapshot:
                 if self._option_change_since is None:
                     self._option_change_since = now
@@ -192,6 +278,24 @@ class AutoHexWatcher:
                 if self._last_option_snapshot is not None:
                     self._last_option_snapshot = None
                 self._option_change_since = None
+                self._settle_pick_cycle_on_ui_gone()
+
+        # 欠账且本帧已能选牌，但尚未挂 pending：补一次兑现
+        if self._owed and (is_dead or ui_visible) and self._pending_reason is None:
+            self._redeem_owed_if_ready(
+                is_dead=is_dead,
+                ui_visible=ui_visible,
+                source="死亡/泉水" if is_dead else "选牌 UI",
+            )
+
+        # 选牌 UI 仍在且无其它待办时，保持持续刷新（直到玩家选定）
+        if ui_visible and self._pending_reason is None and (
+            self._pick_cycle_active or self._pending_cp is not None
+        ):
+            self._queue_reason("ui_keep")
+        elif ui_visible and self._pending_reason is None and not self._owed:
+            # 无欠账的独立选牌 UI：同样持续刷新直至选定
+            self._queue_reason("ui_keep")
 
         # ---- 执行排队的分析 ----
         if self._pending_reason is None:
@@ -202,7 +306,7 @@ class AutoHexWatcher:
             return
 
         reason = self._pending_reason
-        if reason == "checkpoint" and self._idle_until_next:
+        if reason == "checkpoint" and self._idle_until_next and not self._owed:
             self._pending_reason = None
             return
 
@@ -210,9 +314,19 @@ class AutoHexWatcher:
             self._pending_reason = None
             return
 
-        if reason in ("checkpoint", "death", "ui"):
+        if reason in ("checkpoint", "death", "ui", "ui_keep"):
             ui_likely = is_dead or ui_visible or self._detect_hex_ui_quick()
             if not ui_likely:
+                if reason == "ui_keep":
+                    self._settle_pick_cycle_on_ui_gone()
+                    return
+                if reason == "checkpoint":
+                    # UI 仍不可用：保持欠账，撤掉 pending，避免 OCR 空转
+                    if self._pending_cp is not None:
+                        self._owed.add(self._pending_cp)
+                    self._pending_reason = None
+                    self._retry_after = now + OWED_LIGHT_WAIT
+                    return
                 self._retry_after = now + 1.2
                 return
 
@@ -226,11 +340,13 @@ class AutoHexWatcher:
             "checkpoint": f"检查点 Lv.{self._pending_cp}",
             "death": "死亡/泉水",
             "ui": "选牌 UI",
+            "ui_keep": "选牌持续刷新",
             "option_change": "选项刷新",
             "manual": "手动",
         }.get(reason, reason)
         self._last_analyze = now
-        self._status(f"🔎 自动识别海克斯 ({label} / {hero})…")
+        if reason != "ui_keep":
+            self._status(f"🔎 自动识别海克斯 ({label} / {hero})…")
         try:
             results = self.analyzer.analyze(hero)
         except Exception as e:
@@ -267,33 +383,52 @@ class AutoHexWatcher:
             if remind:
                 self._emit_reminder()
             if reason == "checkpoint" and self._pending_cp is not None:
-                self._fired.add(self._pending_cp)
-                self._status(f"✅ 自动识别完成 (检查点 Lv.{self._pending_cp})")
-                self._pending_cp = None
-                self._arm_idle_watch()
+                # 尚未选定：不标 _fired；等 UI 消失再结算欠账
+                self._status(f"✅ 检查点 Lv.{self._pending_cp} 推荐已更新（待选定）")
             elif reason == "death":
                 self._death_cycle_fired = True
                 self._status("✅ 自动识别完成 (死亡/泉水)")
             elif reason == "option_change":
                 self._status("✅ 刷新后已更新推荐")
+            elif reason == "ui_keep":
+                pass
             else:
                 self._status(f"✅ 自动识别完成 ({label})")
-            self._pending_reason = None
+            self._pick_cycle_active = True
+            # 有效识别后默认继续刷新；是否选完由后续 tick 观察 UI 消失再结算
+            # （避免 analyze 成功但 post 快照偶发失败时误清欠账）
+            self._continue_or_stop_refresh(
+                post_ui=True if (post_ui or valid_count > 0) else False,
+                now=now,
+            )
         elif error_empty:
             if reason == "checkpoint":
-                if self._pending_cp in self._fired or not is_dead:
-                    self._arm_idle_watch()
-            self._retry_after = now + 1.0
+                # 空结果且 UI 不可用：保持欠账，撤 pending，轻量等待（死亡中也不狂刷）
+                if self._pending_cp is not None:
+                    self._owed.add(self._pending_cp)
+                if not post_ui:
+                    self._pending_reason = None
+                    self._retry_after = now + OWED_LIGHT_WAIT
+                    return
+            if not post_ui and reason == "ui_keep":
+                self._settle_pick_cycle_on_ui_gone()
+            else:
+                self._retry_after = now + 1.0
         else:
             self.on_results(results or {})
             if remind:
                 self._emit_reminder()
-            if reason == "checkpoint" and self._pending_cp is not None:
-                self._fired.add(self._pending_cp)
-                self._pending_cp = None
-                self._arm_idle_watch()
-            elif reason == "death":
+            if reason == "death":
                 self._death_cycle_fired = True
+            self._pick_cycle_active = True
+            self._continue_or_stop_refresh(post_ui=bool(post_ui), now=now)
+
+    def _continue_or_stop_refresh(self, *, post_ui: bool, now: float):
+        """选牌 UI 仍在则排队持续刷新；UI 消失则停止该轮高频识别。"""
+        if post_ui:
+            self._pending_reason = "ui_keep"
+            self._retry_after = now + UI_KEEP_REFRESH_INTERVAL
+        else:
             self._pending_reason = None
 
     def _queue_reason(self, reason: str):
@@ -304,6 +439,7 @@ class AutoHexWatcher:
             "death": 4,
             "checkpoint": 3,
             "ui": 2,
+            "ui_keep": 1,
         }
         cur = self._pending_reason
         if cur is None or priority.get(reason, 0) >= priority.get(cur, 0):
@@ -332,22 +468,27 @@ class AutoHexWatcher:
         if has_signal or (ui and snap):
             self._emit_reminder()
             self._status("✅ 刷新后已更新推荐")
+            self._pick_cycle_active = True
+        # 选牌 UI 仍在：手动刷新后继续自动重识别，直到选完
+        if ui:
+            self._pending_reason = "ui_keep"
+            self._retry_after = time.time() + UI_KEEP_REFRESH_INTERVAL
 
     def mark_ui_gone_if_needed(self, results: dict):
         """分析后若全无文字，视为选完。"""
         if not results:
-            self._idle_until_next = True
-            self._pending_cp = None
             self._last_option_snapshot = None
+            self._settle_pick_cycle_on_ui_gone()
+            self._arm_idle_watch()
             return
         empty = all(
             (v.get("error") and "无文字" in str(v.get("text", "")))
             for v in results.values()
         )
         if empty:
-            self._idle_until_next = True
-            self._pending_cp = None
             self._last_option_snapshot = None
+            self._settle_pick_cycle_on_ui_gone()
+            self._arm_idle_watch()
 
     def _snapshot_options(self) -> Tuple[Optional[str], bool]:
         """对三个 hex 区域 OCR，返回 (规范化拼接快照, UI是否可见)。"""

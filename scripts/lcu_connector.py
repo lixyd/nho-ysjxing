@@ -321,12 +321,8 @@ class LCUConnector:
                 pass
         return None
 
-    def get_champ_select_champion(self):
-        """
-        选人阶段获取英雄 (ChampSelect)。
-        ARAM: 除 championId 外，还读 championPickIntent / selectedSkinId，
-        并轮询 myTeam 本地玩家；championId 为 0 时回退 intent。
-        """
+    def _champ_select_local_player(self):
+        """读取 ChampSelect session 本地玩家条目；失败返回 None。"""
         if not self._connected:
             return None
         resp = self._request('GET', '/lol-champ-select/v1/session')
@@ -350,40 +346,66 @@ class LCUConnector:
                         break
             if local_player is None and len(my_team) == 1:
                 local_player = my_team[0]
-            if not local_player:
-                return None
-
-            def _cid_from_player(p):
-                cid = p.get('championId', 0) or 0
-                try:
-                    cid = int(cid)
-                except (TypeError, ValueError):
-                    cid = 0
-                if cid > 0:
-                    return cid
-                intent = p.get('championPickIntent', 0) or 0
-                try:
-                    intent = int(intent)
-                except (TypeError, ValueError):
-                    intent = 0
-                if intent > 0:
-                    return intent
-                skin = p.get('selectedSkinId', 0) or 0
-                try:
-                    skin = int(skin)
-                except (TypeError, ValueError):
-                    skin = 0
-                # skinId ≈ championId * 1000 + skinIndex
-                if skin >= 1000:
-                    return skin // 1000
-                return 0
-
-            cid = _cid_from_player(local_player)
-            if cid > 0:
-                return self.id_to_cn.get(cid)
+            return local_player
         except Exception:
-            pass
-        return None
+            return None
+
+    @staticmethod
+    def _champ_ids_from_player(p):
+        """
+        从 myTeam 玩家条目提取 (locked_id, intent_or_skin_id)。
+        locked_id: championId>0 视为已锁定；否则 0。
+        display_id: locked / pickIntent / skin 推导，供展示与推荐。
+        """
+        locked = 0
+        intent = 0
+        skin_cid = 0
+        try:
+            locked = int(p.get('championId', 0) or 0)
+        except (TypeError, ValueError):
+            locked = 0
+        try:
+            intent = int(p.get('championPickIntent', 0) or 0)
+        except (TypeError, ValueError):
+            intent = 0
+        try:
+            skin = int(p.get('selectedSkinId', 0) or 0)
+        except (TypeError, ValueError):
+            skin = 0
+        # skinId ≈ championId * 1000 + skinIndex
+        if skin >= 1000:
+            skin_cid = skin // 1000
+        display = locked if locked > 0 else (intent if intent > 0 else skin_cid)
+        return (locked if locked > 0 else 0), display
+
+    def get_champ_select_pick_state(self):
+        """
+        选人阶段英雄状态。
+
+        Returns:
+            (hero_cn | None, locked: bool)
+            locked=True 仅当 championId>0；仅有 championPickIntent 时 locked=False。
+        """
+        local_player = self._champ_select_local_player()
+        if not local_player:
+            return None, False
+        try:
+            locked_id, display_id = self._champ_ids_from_player(local_player)
+            if display_id <= 0:
+                return None, False
+            hero = self.id_to_cn.get(display_id)
+            return hero, bool(locked_id > 0)
+        except Exception:
+            return None, False
+
+    def get_champ_select_champion(self):
+        """
+        选人阶段获取英雄 (ChampSelect)。
+        ARAM: 除 championId 外，还读 championPickIntent / selectedSkinId，
+        并轮询 myTeam 本地玩家；championId 为 0 时回退 intent。
+        """
+        hero, _locked = self.get_champ_select_pick_state()
+        return hero
 
     def get_gameflow_champion(self):
         """
