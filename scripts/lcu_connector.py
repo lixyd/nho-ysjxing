@@ -11,13 +11,44 @@ LCU Connector - 英雄联盟客户端本地 API 连接器
 """
 import json
 import os
+import re
 
 import psutil
 import requests
 import urllib3
+from thefuzz import process as fuzz_process, fuzz as fuzz_scorer
 
 # 禁用 SSL 自签名证书警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# LCU alias / Live Client 名 → champions.json 英文键的常见别名（normalize 后）
+_ALIAS_ALIASES = {
+    "renataglasc": "renata",
+    "nunuwillump": "nunu",
+    "wukong": "monkeyking",
+    "chogath": "chogath",
+    "belveth": "belveth",
+    "kaisa": "kaisa",
+    "khazix": "khazix",
+    "leblanc": "leblanc",
+    "velkoz": "velkoz",
+    "reksai": "reksai",
+    "monkeyking": "monkeyking",
+}
+
+
+def normalize_champion_key(value):
+    """Robust key: lower, strip spaces/underscores/punctuation; keep CJK."""
+    if value is None:
+        return ""
+    s = str(value).strip().lower()
+    if not s:
+        return ""
+    # drop spaces, underscores, hyphens, apostrophes, dots, ampersands
+    s = re.sub(r"[\s_\-'\.&]+", "", s)
+    # keep letters, digits, CJK
+    s = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", s)
+    return s
 
 # 常见的英雄联盟安装路径（用于 lockfile 备选读取）
 COMMON_INSTALL_PATHS = [
@@ -53,13 +84,15 @@ class LCUConnector:
         self.cn_to_en = {}
         # 反向映射: 英文名(小写) -> 中文名
         self.en_to_cn = {}
+        # normalize(en/alias/cn) -> 中文名
+        self.norm_to_cn = {}
         self._load_champions_map(champions_json_path)
 
         # 英雄 ID -> 中文名映射 (连接后构建)
         self.id_to_cn = {}
 
     def _load_champions_map(self, path):
-        """加载 champions.json 构建中英文映射"""
+        """加载 champions.json 构建中英文映射（含 normalize / alias）"""
         if not os.path.exists(path):
             print(f"   [WARN] LCU: champions.json not found: {path}")
             return
@@ -67,10 +100,71 @@ class LCUConnector:
             with open(path, 'r', encoding='utf-8') as f:
                 self.cn_to_en = json.load(f)
             for cn, en in self.cn_to_en.items():
+                if not en:
+                    continue
                 self.en_to_cn[en.lower()] = cn
+                self.en_to_cn[normalize_champion_key(en)] = cn
+                self.norm_to_cn[normalize_champion_key(en)] = cn
+                self.norm_to_cn[normalize_champion_key(cn)] = cn
+            # 别名表指向已有英文键
+            for alias_norm, canon_norm in _ALIAS_ALIASES.items():
+                cn = self.norm_to_cn.get(canon_norm)
+                if cn:
+                    self.norm_to_cn[alias_norm] = cn
+                    self.en_to_cn[alias_norm] = cn
             print(f"   [OK] heroes loaded: {len(self.cn_to_en)}")
         except Exception as e:
             print(f"   [WARN] champions.json error: {e}")
+
+    def resolve_to_cn(self, raw_name):
+        """将任意 EN/CN/带空格/别名 解析为中文名。"""
+        if not raw_name:
+            return None
+        name = str(raw_name).strip()
+        if not name:
+            return None
+        # 已是中文且在表中
+        if name in self.cn_to_en:
+            return name
+        # 直接小写 EN
+        cn = self.en_to_cn.get(name.lower())
+        if cn:
+            return cn
+        norm = normalize_champion_key(name)
+        if not norm:
+            return None
+        cn = self.norm_to_cn.get(norm) or self.en_to_cn.get(norm)
+        if cn:
+            return cn
+        # alias 再跳一次
+        canon = _ALIAS_ALIASES.get(norm)
+        if canon:
+            cn = self.norm_to_cn.get(canon)
+            if cn:
+                return cn
+        # 若 normalize 结果本身是中文名
+        if norm in self.cn_to_en:
+            return norm
+        return None
+
+    def _fuzzy_en_to_cn(self, raw_name, threshold=70):
+        """对 en_to_cn / champions 英文键做模糊匹配。"""
+        if not raw_name or not self.en_to_cn:
+            return None
+        keys = list({k for k in self.en_to_cn.keys() if k and k.isascii()})
+        if not keys:
+            return None
+        try:
+            hit = fuzz_process.extractOne(
+                normalize_champion_key(raw_name) or str(raw_name),
+                keys,
+                scorer=fuzz_scorer.WRatio,
+            )
+        except Exception:
+            hit = None
+        if hit and hit[1] >= threshold:
+            return self.en_to_cn.get(hit[0])
+        return None
 
     # ==========================================
     # 连接方法
@@ -160,7 +254,7 @@ class LCUConnector:
     # ==========================================
 
     def _build_champion_id_map(self):
-        """从 LCU API 获取英雄数据，构建 ID -> 中文名映射"""
+        """从 LCU API 获取英雄数据，构建 ID -> 中文名映射（alias/name/中文灵活匹配）"""
         resp = self._request('GET', '/lol-game-data/assets/v1/champion-summary.json')
         if not resp or resp.status_code != 200:
             return
@@ -168,10 +262,27 @@ class LCUConnector:
             champions = resp.json()
             for champ in champions:
                 cid = champ.get('id')
-                alias = champ.get('alias', '')
                 if cid is None or cid == -1:
                     continue
-                cn_name = self.en_to_cn.get(alias.lower())
+                alias = champ.get('alias', '') or ''
+                name = champ.get('name', '') or ''
+                cn_name = None
+                # LCU 国服 name 常为中文，直接可用
+                if name in self.cn_to_en:
+                    cn_name = name
+                if not cn_name:
+                    cn_name = self.resolve_to_cn(alias)
+                if not cn_name:
+                    cn_name = self.resolve_to_cn(name)
+                if not cn_name and alias:
+                    # 扫描 champions.json 英文值做 normalize 比对
+                    alias_norm = normalize_champion_key(alias)
+                    for cn, en in self.cn_to_en.items():
+                        if normalize_champion_key(en) == alias_norm:
+                            cn_name = cn
+                            break
+                if not cn_name and alias:
+                    cn_name = self._fuzzy_en_to_cn(alias, threshold=85)
                 if cn_name:
                     self.id_to_cn[cid] = cn_name
             print(f"   [OK] ID map: {len(self.id_to_cn)} champions")
@@ -213,7 +324,8 @@ class LCUConnector:
     def get_champ_select_champion(self):
         """
         选人阶段获取英雄 (ChampSelect)。
-        通过 /lol-champ-select/v1/session 接口。
+        ARAM: 除 championId 外，还读 championPickIntent / selectedSkinId，
+        并轮询 myTeam 本地玩家；championId 为 0 时回退 intent。
         """
         if not self._connected:
             return None
@@ -223,13 +335,52 @@ class LCUConnector:
         try:
             data = resp.json()
             local_cell_id = data.get('localPlayerCellId')
-            if local_cell_id is None:
+            my_team = data.get('myTeam') or []
+            local_player = None
+            if local_cell_id is not None:
+                for player in my_team:
+                    if player.get('cellId') == local_cell_id:
+                        local_player = player
+                        break
+            # 兜底：标记 is localPlayer / summoner 字段
+            if local_player is None:
+                for player in my_team:
+                    if player.get('isLocalPlayer') or player.get('playerType') == 'LOCAL':
+                        local_player = player
+                        break
+            if local_player is None and len(my_team) == 1:
+                local_player = my_team[0]
+            if not local_player:
                 return None
-            for player in data.get('myTeam', []):
-                if player.get('cellId') == local_cell_id:
-                    cid = player.get('championId', 0)
-                    if cid and cid > 0:
-                        return self.id_to_cn.get(cid)
+
+            def _cid_from_player(p):
+                cid = p.get('championId', 0) or 0
+                try:
+                    cid = int(cid)
+                except (TypeError, ValueError):
+                    cid = 0
+                if cid > 0:
+                    return cid
+                intent = p.get('championPickIntent', 0) or 0
+                try:
+                    intent = int(intent)
+                except (TypeError, ValueError):
+                    intent = 0
+                if intent > 0:
+                    return intent
+                skin = p.get('selectedSkinId', 0) or 0
+                try:
+                    skin = int(skin)
+                except (TypeError, ValueError):
+                    skin = 0
+                # skinId ≈ championId * 1000 + skinIndex
+                if skin >= 1000:
+                    return skin // 1000
+                return 0
+
+            cid = _cid_from_player(local_player)
+            if cid > 0:
+                return self.id_to_cn.get(cid)
         except Exception:
             pass
         return None
@@ -272,7 +423,7 @@ class LCUConnector:
     def get_ingame_champion(self):
         """
         通过 Live Client Data API 获取游戏内英雄 (端口 2999, 免密)。
-        仅在游戏进行中（Loading 结束后）可用。
+        championName 可能是中文或带空格/撇号的英文，做灵活映射。
         """
         try:
             resp = requests.get(
@@ -280,12 +431,17 @@ class LCUConnector:
                 verify=False, timeout=self.LIVE_API_TIMEOUT
             )
             if resp.status_code == 200:
-                en_name = resp.json().get('championName', '')
-                if en_name:
-                    cn = self.en_to_cn.get(en_name.lower())
-                    if not cn:
-                        cn = self.en_to_cn.get(en_name.replace(' ', '').lower())
+                raw = resp.json().get('championName', '') or ''
+                if not raw:
+                    return None
+                # 已是中文
+                if raw in self.cn_to_en:
+                    return raw
+                cn = self.resolve_to_cn(raw)
+                if cn:
                     return cn
+                # 模糊匹配 EN 键
+                return self._fuzzy_en_to_cn(raw, threshold=70)
         except requests.exceptions.ConnectionError:
             pass
         except Exception:
@@ -300,46 +456,39 @@ class LCUConnector:
         """
         全生命周期自动获取当前英雄。
 
-        按优先级依次尝试:
-          1. ChampSelect  -> /lol-champ-select/v1/session
-          2. InProgress   -> /lol-gameflow/v1/session (gameData)
-          3. Live API     -> 127.0.0.1:2999 (免密, 游戏内)
+        不依赖 phase 卡死：始终按
+          ChampSelect → GameFlow → Live → ChampSelect again
+        尝试；骰子换人后也不会永久粘在旧英雄上（由上层轮询刷新）。
 
         Returns:
             (str | None, str): (英雄中文名, 数据来源)
         """
-        # 确保连接
         if not self._connected:
             if not self.connect():
-                # LCU 不可用，只尝试 Live API
                 hero = self.get_ingame_champion()
                 return (hero, "Live API") if hero else (None, "")
 
-        # 获取当前阶段
+        # 1) ChampSelect（含 intent / reroll）
+        hero = self.get_champ_select_champion()
+        if hero:
+            return hero, "ChampSelect"
+
+        # 2) GameFlow session
+        hero = self.get_gameflow_champion()
+        if hero:
+            return hero, "GameFlow"
+
+        # 3) Live Client
+        hero = self.get_ingame_champion()
+        if hero:
+            return hero, "Live API"
+
+        # 4) 再试 ChampSelect（phase 延迟 / 骰子后短暂不同步）
+        hero = self.get_champ_select_champion()
+        if hero:
+            return hero, "ChampSelect"
+
         phase = self.get_gameflow_phase()
-
-        # 策略1: ChampSelect 阶段
-        if phase == "ChampSelect":
-            hero = self.get_champ_select_champion()
-            if hero:
-                return hero, "ChampSelect"
-
-        # 策略2: InProgress / GameStart 阶段
-        if phase in ("InProgress", "GameStart"):
-            hero = self.get_gameflow_champion()
-            if hero:
-                return hero, "GameFlow"
-            # 备选: Live Client Data API
-            hero = self.get_ingame_champion()
-            if hero:
-                return hero, "Live API"
-
-        # 策略3: 其他阶段也尝试 champ-select (以防 phase 查询延迟)
-        if phase not in ("None", "Lobby", "Matchmaking", "EndOfGame", "WaitingForStats"):
-            hero = self.get_champ_select_champion()
-            if hero:
-                return hero, "ChampSelect"
-
         return None, phase or ""
 
     # ==========================================

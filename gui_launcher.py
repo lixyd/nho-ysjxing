@@ -106,6 +106,8 @@ class GUIController(threading.Thread):
         self._last_f7 = 0
         self._last_f8 = 0
         self._last_phase = None
+        self._last_hero_poll = 0.0
+        self._fast_poll_until = 0.0  # F7 / ChampSelect 后加速轮询
 
         self.matchmaking = MatchmakingService(
             lcu_connector,
@@ -207,16 +209,45 @@ class GUIController(threading.Thread):
                 print(f"⚠ 英雄 [{hero}] 不在数据库中")
         return None, source
 
+    def _clear_hero_dependent_state(self):
+        """英雄切换时清空海克斯叠加层与自动海克斯选项缓存，并刷新符文提示。"""
+        try:
+            self.overlay_queue.put({"cmd": "CLEAR"})
+        except Exception:
+            pass
+        if self.auto_hex:
+            try:
+                self.auto_hex._last_option_snapshot = None
+                self.auto_hex._option_change_since = None
+                self.auto_hex._ui_was_visible = False
+                self.auto_hex._idle_until_next = False
+                self.auto_hex._pending_cp = None
+                self.auto_hex._pending_reason = None
+            except Exception:
+                pass
+        self._gui(event="rune_info", text="", hero=self.current_hero)
+
+    def _apply_hero_change(self, hero, source, *, from_manual=False):
+        """统一处理英雄变更：清状态 → 更新 → 刷符文。"""
+        old = self.current_hero
+        changed = hero != old
+        if changed and old:
+            print(f"英雄已切换 ({source}): {old} → {hero}")
+            self._clear_hero_dependent_state()
+        elif changed:
+            self._clear_hero_dependent_state()
+        self.current_hero = hero
+        self._gui(event="hero_found", hero=hero, source=source or ("手动输入" if from_manual else ""))
+        self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
+        self._maybe_show_runes(hero)
+        return hero
+
     def set_hero(self, hero_name):
         """手动设置英雄 (供 GUI 调用)"""
         validated = self._validate_hero(hero_name)
         if validated:
-            self.current_hero = validated
             print(f"✅ 已手动锁定英雄: {validated}")
-            self._gui(event="hero_found", hero=validated, source="手动输入")
-            self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {validated}\n按 F6 分析"})
-            self._maybe_show_runes(validated)
-            return validated
+            return self._apply_hero_change(validated, "手动输入", from_manual=True)
         return None
 
     def trigger_analyze(self):
@@ -264,8 +295,9 @@ class GUIController(threading.Thread):
             return
         self._gui(event="status", status="connecting")
         print("正在连接英雄联盟客户端...")
+        self._fast_poll_until = time.time() + 30
 
-        for attempt in range(15):  # 30秒轮询
+        for attempt in range(40):  # ChampSelect 加速: ~0.75s * 40 ≈ 30s
             if not self.running:
                 return
 
@@ -273,11 +305,8 @@ class GUIController(threading.Thread):
             verbose = (attempt == 0 or attempt % 5 == 0)
             hero, source = self._try_auto_detect(verbose=verbose)
             if hero:
-                self.current_hero = hero
                 print(f"✅ 自动识别到英雄: [{hero}] (来源: {source})")
-                self._gui(event="hero_found", hero=hero, source=source)
-                self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
-                self._maybe_show_runes(hero)
+                self._apply_hero_change(hero, source)
                 return
 
             # F8 中断自动检测
@@ -285,7 +314,20 @@ class GUIController(threading.Thread):
                 break
 
             self._gui(event="status", status="waiting", attempt=attempt)
-            time.sleep(2)
+            # ChampSelect 下更快轮询 pick intent / 骰子
+            sleep_s = 0.75
+            try:
+                if self.lcu and self.lcu.is_connected():
+                    phase = self.lcu.get_gameflow_phase()
+                    if phase == "ChampSelect":
+                        sleep_s = 0.6
+                    elif phase in ("InProgress", "GameStart"):
+                        sleep_s = 1.0
+                    else:
+                        sleep_s = 1.2
+            except Exception:
+                pass
+            time.sleep(sleep_s)
 
         # 超时未检测到
         print("暂未检测到英雄，可在上方手动输入英雄名")
@@ -314,9 +356,28 @@ class GUIController(threading.Thread):
                         if phase in ("EndOfGame", "WaitingForStats", "Lobby", "None"):
                             if self._last_phase == "InProgress":
                                 self.auto_hex.reset_match()
+                        if phase == "ChampSelect":
+                            self._fast_poll_until = max(self._fast_poll_until, now + 45)
                         self._last_phase = phase
             except Exception:
                 pass
+
+            # 周期性英雄重检：ChampSelect / F7 后加速，对局中也能跟上骰子换人
+            try:
+                phase = self._last_phase
+                if phase == "ChampSelect" or now < self._fast_poll_until:
+                    poll_every = 0.7
+                elif phase in ("InProgress", "GameStart"):
+                    poll_every = 2.0
+                else:
+                    poll_every = 4.0
+                if now - self._last_hero_poll >= poll_every:
+                    self._last_hero_poll = now
+                    hero, source = self._try_auto_detect()
+                    if hero and hero != self.current_hero:
+                        self._apply_hero_change(hero, source)
+            except Exception as e:
+                print(f"[hero_poll] {e}")
 
             # 自动海克斯
             try:
@@ -329,19 +390,17 @@ class GUIController(threading.Thread):
                 self._last_f6 = now
                 self.trigger_analyze()
 
-            # F7 - 刷新英雄
+            # F7 - 刷新英雄（并开启一段时间的快速轮询）
             if keyboard.is_pressed('f7') and now - self._last_f7 > 1.0:
                 self._last_f7 = now
+                self._fast_poll_until = now + 20
+                self._last_hero_poll = 0  # 立刻再检
                 self._gui(event="status", status="refreshing")
                 self.overlay_queue.put({"cmd": "STATUS", "data": "刷新英雄..."})
                 hero, source = self._try_auto_detect()
                 if hero and hero != self.current_hero:
-                    old = self.current_hero
-                    self.current_hero = hero
-                    print(f"英雄已切换 ({source}): {old} → {hero}")
-                    self._gui(event="hero_found", hero=hero, source=source)
+                    self._apply_hero_change(hero, source)
                     self.overlay_queue.put({"cmd": "STATUS", "data": f"已切换: {hero}\n按 F6 分析"})
-                    self._maybe_show_runes(hero)
                 elif hero:
                     self._gui(event="hero_confirmed", hero=hero)
                     self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
@@ -354,6 +413,7 @@ class GUIController(threading.Thread):
                 print("F8: 重新进入自动检测阶段")
                 self._gui(event="status", status="resetting")
                 self.current_hero = None
+                self._clear_hero_dependent_state()
                 time.sleep(0.5)
                 return  # 退出 listening_phase, 回到 auto_detect
 
@@ -1488,8 +1548,12 @@ class LauncherApp:
 
         elif event == "hero_found":
             hero = msg.get("hero", "")
+            source = msg.get("source", "")
             self.hero_var.set(hero)
-            self._set_status("监听中", self.SUCCESS)
+            if source == "手动输入":
+                self._set_status("监听中", self.SUCCESS)
+            else:
+                self._set_status("监听中", self.SUCCESS)
             self.tray.notify("英雄已识别", f"当前英雄: {hero}")
 
         elif event == "hero_confirmed":
@@ -1567,7 +1631,7 @@ class LauncherApp:
             self._log("❌ 数据未加载")
             return
 
-        # 搜索英雄
+        # 搜索英雄（精确 CN/EN/拼音/昵称 + 模糊）
         matches, is_exact = self.dm.search_hero(query)
 
         if not matches:
@@ -1581,7 +1645,11 @@ class LauncherApp:
         if self.controller and self.engine_running:
             result = self.controller.set_hero(hero_name)
             if result:
-                self._log(f"✅ 已锁定: {result}")
+                if is_exact:
+                    self._log(f"✅ 已锁定: {result}")
+                else:
+                    self._log(f"已匹配: {result}")
+                    self._set_status(f"已匹配: {result}", self.SUCCESS)
                 self.hero_entry.delete(0, tk.END)
                 self.hero_entry.insert(0, "输入英雄名/拼音...")
                 self.hero_entry.config(fg=self.TEXT_DIM)

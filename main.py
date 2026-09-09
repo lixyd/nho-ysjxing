@@ -16,8 +16,76 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from thefuzz import process, fuzz
 from scripts.config import BASE_DIR, DATA_DIR
-from scripts.lcu_connector import LCUConnector
+from scripts.lcu_connector import LCUConnector, normalize_champion_key
 from rapidocr_onnxruntime import RapidOCR
+
+# 常见昵称 / 简称 → 中文称号
+HERO_NICKNAMES = {
+    "女警": "皮城女警",
+    "ez": "探险家",
+    "ezreal": "探险家",
+    "老鼠": "瘟疫之源",
+    "狗头": "荒漠屠夫",
+    "剑圣": "无极剑圣",
+    "男枪": "法外狂徒",
+    "女枪": "赏金猎人",
+    "卡莎": "虚空之女",
+    "霞": "逆羽",
+    "洛": "幻翎",
+    "锤石": "魂锁典狱长",
+    "提莫": "迅捷斥候",
+    "亚索": "疾风剑豪",
+    "永恩": "封魔剑魂",
+    "乌鸦": "诺克萨斯统领",
+    "小炮": "麦林炮手",
+    "大嘴": "深渊巨口",
+    "小鱼人": "潮汐海灵",
+    "卡牌": "卡牌大师",
+    "诺手": "诺克萨斯之手",
+    "蛮王": "蛮族之王",
+    "德玛": "德玛西亚之力",
+    "盖伦": "德玛西亚之力",
+    "皇子": "德玛西亚皇子",
+    "赵信": "德邦总管",
+    "悟空": "齐天大圣",
+    "大圣": "齐天大圣",
+    "牛头": "牛头酋长",
+    "机器人": "蒸汽机器人",
+    "布隆": "弗雷尔卓德之心",
+    "男刀": "不祥之刃",
+    "女刀": "不祥之刃",
+    "刀妹": "刀锋舞者",
+    "剑姬": "无双剑姬",
+    "武器": "武器大师",
+    "贾克斯": "武器大师",
+    "瑞文": "放逐之刃",
+    "阿卡丽": "离群之刺",
+    "卡特": "不祥之刃",
+    "妖姬": "诡术妖姬",
+    "狐狸": "九尾妖狐",
+    "光辉": "光辉女郎",
+    "拉克丝": "光辉女郎",
+    "火男": "复仇焰魂",
+    "冰女": "冰霜女巫",
+    "风女": "风暴之怒",
+    "宝石": "暗黑元首",
+    "蛇女": "魔蛇之拥",
+    "螳螂": "虚空掠夺者",
+    "螃蟹": "虚空遁地兽",
+    "大虫": "虚空恐惧",
+    "小法": "黑暗之女",
+    "安妮": "黑暗之女",
+    "飞机": "英勇投弹手",
+    "人马": "战争之影",
+    "猪女": "北地之怒",
+    "寡妇": "痛苦之拥",
+    "蜘蛛": "蜘蛛女皇",
+    "瞎子": "盲僧",
+    "李青": "盲僧",
+    "vn": "暗夜猎手",
+    "mf": "赏金猎人",
+    "teemo": "迅捷斥候",
+}
 
 # ================= 配置与常量 =================
 
@@ -50,6 +118,10 @@ class DataManager:
         self.hero_data = {}
         # 拼音映射改为 defaultdict(list)，支持一个拼音对应多个英雄
         self.pinyin_map = defaultdict(list)
+        self.cn_to_en = {}
+        self.en_to_cn = {}
+        self.en_names = []
+        self.nicknames = dict(HERO_NICKNAMES)
 
         self.base_dir = BASE_DIR
         self.data_dir = DATA_DIR
@@ -148,36 +220,97 @@ class DataManager:
                             self.pinyin_map[cn].append(cn)
             except Exception as e:
                 print(f"⚠️ {pinyin_file} 加载异常: {e}")
+
+        # 4. champions.json: EN ↔ CN（供英文输入 / 校验）
+        champions_file = os.path.join(self.data_dir, 'champions.json')
+        if os.path.exists(champions_file):
+            try:
+                with open(champions_file, 'r', encoding='utf-8') as f:
+                    self.cn_to_en = json.load(f)
+                for cn, en in self.cn_to_en.items():
+                    if not en:
+                        continue
+                    self.en_to_cn[en.lower()] = cn
+                    self.en_to_cn[normalize_champion_key(en)] = cn
+                    self.en_names.append(en)
+            except Exception as e:
+                print(f"⚠️ {champions_file} 加载异常: {e}")
+
+        # 昵称仅保留数据库中存在的英雄
+        self.nicknames = {
+            k.lower() if k.isascii() else k: v
+            for k, v in self.nicknames.items()
+            if v in self.hero_data or v in self.cn_to_en
+        }
         
         print("-> 数据初始化完成")
 
     def search_hero(self, query):
         """
         英雄搜索逻辑 (增强模糊匹配)
+        接受: 精确中文 / 英文 / 拼音首字母 / 昵称 / thefuzz(CN+EN)
         返回: (匹配列表, 是否精确匹配)
         """
-        query = query.strip().lower()
-        
-        # 1. 尝试拼音/中文直接匹配 (O(1))，返回的是一个列表
-        if query in self.pinyin_map:
-            return self.pinyin_map[query], True
-        
-        # 2. 如果没找到，在数据Key中模糊搜索
+        raw = (query or "").strip()
+        if not raw:
+            return [], False
+        q_lower = raw.lower()
+
+        # 0. 昵称表
+        nick_key = q_lower if raw.isascii() else raw
+        nick = self.nicknames.get(nick_key) or self.nicknames.get(raw) or self.nicknames.get(q_lower)
+        if nick and (nick in self.hero_data or not self.hero_data):
+            if not self.hero_data or nick in self.hero_data:
+                return [nick], True
+
+        # 1. 拼音 / 中文直接
+        if q_lower in self.pinyin_map:
+            return self.pinyin_map[q_lower], True
+        if raw in self.pinyin_map:
+            return self.pinyin_map[raw], True
+
+        # 2. 精确中文
+        if raw in self.hero_data:
+            return [raw], True
+
+        # 3. 精确英文（含 normalize）
+        en_hit = self.en_to_cn.get(q_lower) or self.en_to_cn.get(normalize_champion_key(raw))
+        if en_hit and (en_hit in self.hero_data or not self.hero_data):
+            if not self.hero_data or en_hit in self.hero_data:
+                return [en_hit], True
+
+        # 4. thefuzz: 中文称号 + 英文名
         if self.hero_data:
-            result = process.extractOne(query, list(self.hero_data.keys()))
-            if result and result[1] > 60:
+            cn_keys = list(self.hero_data.keys())
+            result = process.extractOne(raw, cn_keys, scorer=fuzz.WRatio)
+            if result and result[1] >= 60:
                 return [result[0]], False
+            if self.en_names:
+                en_result = process.extractOne(raw, self.en_names, scorer=fuzz.WRatio)
+                if en_result and en_result[1] >= 60:
+                    cn = self.en_to_cn.get(en_result[0].lower()) or self.en_to_cn.get(
+                        normalize_champion_key(en_result[0])
+                    )
+                    if cn and cn in self.hero_data:
+                        return [cn], False
 
         return [], False
 
-    def validate_hero(self, name, threshold=80):
-        """验证英雄名是否在数据库中，尝试模糊映射"""
+    def validate_hero(self, name, threshold=65):
+        """验证英雄名是否在数据库中；精确 CN/EN/拼音/昵称 + 模糊(~60-70)。"""
+        if not name:
+            return None
+        matches, _exact = self.search_hero(name)
+        if matches:
+            hit = matches[0]
+            if not self.hero_data or hit in self.hero_data:
+                return hit
         if name in self.hero_data:
             return name
         if not self.hero_data:
             return None
-        result = process.extractOne(name, list(self.hero_data.keys()))
-        if result and result[1] > threshold:
+        result = process.extractOne(str(name), list(self.hero_data.keys()), scorer=fuzz.WRatio)
+        if result and result[1] >= threshold:
             return result[0]
         return None
 
