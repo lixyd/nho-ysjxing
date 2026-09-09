@@ -1,5 +1,5 @@
 """
-ARAM 海克斯助手 - GUI 启动器
+ARAM 全能助手 - GUI 启动器
 独立 EXE 入口点，提供图形化界面与系统托盘支持
 """
 import tkinter as tk
@@ -16,7 +16,7 @@ import traceback
 
 # ============ 路径初始化 (兼容 PyInstaller 打包) ============
 
-from scripts.config import get_base_dir, BASE_DIR
+from scripts.config import get_base_dir, BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS
 os.chdir(BASE_DIR)
 sys.path.insert(0, BASE_DIR)
 
@@ -25,6 +25,11 @@ sys.path.insert(0, BASE_DIR)
 import keyboard
 from PIL import Image, ImageDraw
 import pystray
+import json
+
+from scripts.matchmaking import MatchmakingService
+from scripts.runes import RuneService
+from scripts.auto_hex import AutoHexWatcher
 
 
 # ============ 统一配色方案 ============
@@ -77,33 +82,71 @@ class LogRedirector(io.TextIOBase):
 # ================= 后台控制器 (替代 InputController) =================
 
 class GUIController(threading.Thread):
-    """后台引擎: LCU 自动检测 + F6/F7 热键监听"""
+    """后台引擎: LCU 自动检测 + F6/F7 热键 + 匹配/海克斯自动化"""
 
-    def __init__(self, overlay_queue, gui_queue, data_manager, analyzer, lcu_connector):
+    def __init__(self, overlay_queue, gui_queue, data_manager, analyzer, lcu_connector,
+                 settings=None, rune_service=None):
         super().__init__(daemon=True)
         self.overlay_queue = overlay_queue
         self.gui_queue = gui_queue
         self.dm = data_manager
         self.analyzer = analyzer
         self.lcu = lcu_connector
+        self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)
+        self.rune_service = rune_service or RuneService(lcu_connector)
         self.current_hero = None
         self.running = True
         self._last_f6 = 0
         self._last_f7 = 0
         self._last_f8 = 0
+        self._last_phase = None
+
+        self.matchmaking = MatchmakingService(
+            lcu_connector,
+            flags={
+                "auto_accept": self.settings.get("auto_accept", True),
+                "auto_ready": self.settings.get("auto_ready", True),
+            },
+            on_event=lambda m: self.gui_queue.put({"event": "log", "text": m}),
+        )
+        self.auto_hex = AutoHexWatcher(
+            lcu=lcu_connector,
+            analyzer=analyzer,
+            get_hero=lambda: self.current_hero,
+            on_results=self._on_hex_results,
+            on_status=lambda m: self.gui_queue.put({"event": "log", "text": m}),
+            enabled=self.settings.get("auto_hex", True),
+        )
 
     def run(self):
         """主循环: 自动检测 → 监听"""
+        self.matchmaking.start()
         while self.running:
             self._auto_detect_phase()
             self._listening_phase()
+        self.matchmaking.stop()
 
     def stop(self):
         self.running = False
+        try:
+            self.matchmaking.stop()
+        except Exception:
+            pass
+
+    def update_setting(self, key, value):
+        self.settings[key] = bool(value)
+        if key in ("auto_accept", "auto_ready"):
+            self.matchmaking.set_flag(key, value)
+        elif key == "auto_hex":
+            self.auto_hex.set_enabled(value)
 
     def _gui(self, **kwargs):
         """发送消息到 GUI"""
         self.gui_queue.put(kwargs)
+
+    def _on_hex_results(self, results):
+        self.overlay_queue.put({"cmd": "UPDATE", "data": results})
+        self._gui(event="status", status="analyzed", hero=self.current_hero)
 
     def _validate_hero(self, name):
         """验证英雄名是否在数据库中，尝试模糊映射"""
@@ -150,8 +193,47 @@ class GUIController(threading.Thread):
             print(f"✅ 已手动锁定英雄: {validated}")
             self._gui(event="hero_found", hero=validated, source="手动输入")
             self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {validated}\n按 F6 分析"})
+            self._maybe_show_runes(validated)
             return validated
         return None
+
+    def trigger_analyze(self):
+        """手动刷新识别 (等同 F6)"""
+        if not self.current_hero:
+            self.overlay_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请按 F7 获取"})
+            self._gui(event="status", status="no_hero_warning")
+            return False
+        self._gui(event="status", status="analyzing", hero=self.current_hero)
+        self.overlay_queue.put({"cmd": "STATUS", "data": f"🔎 分析 [{self.current_hero}]..."})
+        print(f"正在分析: {self.current_hero}...")
+        results = self.analyzer.analyze(self.current_hero)
+        self.overlay_queue.put({"cmd": "UPDATE", "data": results})
+        self._gui(event="status", status="analyzed", hero=self.current_hero)
+        print(f"分析完成: {self.current_hero}")
+        if self.auto_hex:
+            self.auto_hex.notify_manual_refresh()
+            self.auto_hex.mark_ui_gone_if_needed(results or {})
+        return True
+
+    def apply_runes_for_current(self):
+        if not self.current_hero:
+            return False, "尚未锁定英雄"
+        page, source = self.rune_service.recommend(self.current_hero)
+        print(self.rune_service.format_summary(page, source))
+        ok, msg = self.rune_service.apply(page)
+        print(msg)
+        self._gui(event="log", text=msg)
+        return ok, msg
+
+    def _maybe_show_runes(self, hero):
+        page, source = self.rune_service.recommend(hero)
+        summary = self.rune_service.format_summary(page, source)
+        print(summary)
+        self._gui(event="rune_info", text=summary, hero=hero)
+        if self.settings.get("auto_apply_runes"):
+            ok, msg = self.rune_service.apply(page)
+            print(msg)
+            self._gui(event="log", text=msg)
 
     # ---------- 阶段1: 自动检测英雄 ----------
 
@@ -173,6 +255,7 @@ class GUIController(threading.Thread):
                 print(f"✅ 自动识别到英雄: [{hero}] (来源: {source})")
                 self._gui(event="hero_found", hero=hero, source=source)
                 self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
+                self._maybe_show_runes(hero)
                 return
 
             # F8 中断自动检测
@@ -199,20 +282,30 @@ class GUIController(threading.Thread):
         while self.running:
             now = time.time()
 
+            # 阶段变化: 进入新对局时重置自动海克斯
+            try:
+                if self.lcu and self.lcu.is_connected():
+                    phase = self.lcu.get_gameflow_phase()
+                    if phase != self._last_phase:
+                        if phase == "InProgress" and self._last_phase != "InProgress":
+                            self.auto_hex.reset_match()
+                        if phase in ("EndOfGame", "WaitingForStats", "Lobby", "None"):
+                            if self._last_phase == "InProgress":
+                                self.auto_hex.reset_match()
+                        self._last_phase = phase
+            except Exception:
+                pass
+
+            # 自动海克斯
+            try:
+                self.auto_hex.tick()
+            except Exception as e:
+                print(f"[auto_hex] {e}")
+
             # F6 - 分析海克斯
             if keyboard.is_pressed('f6') and now - self._last_f6 > 1.0:
                 self._last_f6 = now
-                if not self.current_hero:
-                    self.overlay_queue.put({"cmd": "STATUS", "data": "⚠ 尚未锁定英雄\n请按 F7 获取"})
-                    self._gui(event="status", status="no_hero_warning")
-                else:
-                    self._gui(event="status", status="analyzing", hero=self.current_hero)
-                    self.overlay_queue.put({"cmd": "STATUS", "data": f"🔎 分析 [{self.current_hero}]..."})
-                    print(f"正在分析: {self.current_hero}...")
-                    results = self.analyzer.analyze(self.current_hero)
-                    self.overlay_queue.put({"cmd": "UPDATE", "data": results})
-                    self._gui(event="status", status="analyzed", hero=self.current_hero)
-                    print(f"分析完成: {self.current_hero}")
+                self.trigger_analyze()
 
             # F7 - 刷新英雄
             if keyboard.is_pressed('f7') and now - self._last_f7 > 1.0:
@@ -226,6 +319,7 @@ class GUIController(threading.Thread):
                     print(f"英雄已切换 ({source}): {old} → {hero}")
                     self._gui(event="hero_found", hero=hero, source=source)
                     self.overlay_queue.put({"cmd": "STATUS", "data": f"已切换: {hero}\n按 F6 分析"})
+                    self._maybe_show_runes(hero)
                 elif hero:
                     self._gui(event="hero_confirmed", hero=hero)
                     self.overlay_queue.put({"cmd": "STATUS", "data": f"当前: {hero}\n按 F6 分析"})
@@ -243,8 +337,6 @@ class GUIController(threading.Thread):
 
             time.sleep(0.05)
 
-
-# ================= 系统托盘管理 =================
 
 class TrayManager:
     """系统托盘图标管理"""
@@ -282,7 +374,7 @@ class TrayManager:
             pystray.MenuItem("显示窗口", self._on_show),
             pystray.MenuItem("退出程序", self._on_quit),
         )
-        self.icon = pystray.Icon("ARAM助手", image, "ARAM 海克斯助手", menu)
+        self.icon = pystray.Icon("ARAM助手", image, "ARAM 全能助手", menu)
         self._thread = threading.Thread(target=self.icon.run, daemon=True)
         self._thread.start()
 
@@ -523,7 +615,7 @@ class UpdateDialog:
 # ================= 主 GUI 应用 =================
 
 class LauncherApp:
-    """ARAM 海克斯助手 - 主界面"""
+    """ARAM 全能助手 - 主界面"""
 
     # 配色方案 (引用统一主题)
     BG          = Theme.BG
@@ -547,9 +639,9 @@ class LauncherApp:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("ARAM 海克斯助手")
-        self.root.geometry("540x660")
-        self.root.minsize(500, 600)
+        self.root.title("ARAM 全能助手 · 海克斯 / 匹配 / 符文")
+        self.root.geometry("560x780")
+        self.root.minsize(520, 700)
         self.root.configure(bg=self.BG)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -572,6 +664,9 @@ class LauncherApp:
         self.analyzer = None
         self.lcu = None
         self.tray = TrayManager(self)
+        self.settings = self._load_settings()
+        self.rune_service = RuneService()
+        self._toggle_vars = {}
 
         # 通信队列
         self.overlay_queue = queue.Queue()
@@ -665,9 +760,9 @@ class LauncherApp:
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side=tk.LEFT)
-        tk.Label(title_frame, text="ARAM 海克斯助手",
+        tk.Label(title_frame, text="ARAM 全能助手",
                  font=self.FONT_TITLE, fg=self.TEXT, bg=self.BG).pack(anchor="w")
-        tk.Label(title_frame, text="大乱斗海克斯推荐 · OCR 识别 · 自动选取",
+        tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
                  font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
 
         # ---- 分隔线 ----
@@ -725,7 +820,7 @@ class LauncherApp:
         # ---- 热键提示 ----
         hotkey_frame = tk.Frame(main, bg=self.BG)
         hotkey_frame.pack(fill=tk.X, pady=(0, 12))
-        hotkeys = [("F6", "分析海克斯"), ("F7", "识别英雄"), ("F8", "重置")]
+        hotkeys = [("F6", "刷新识别"), ("F7", "识别英雄"), ("F8", "重置")]
         for key, desc in hotkeys:
             pill = tk.Frame(hotkey_frame, bg=self.BORDER, padx=1, pady=1)
             pill.pack(side=tk.LEFT, padx=(0, 10))
@@ -735,6 +830,51 @@ class LauncherApp:
                      fg=self.ACCENT, bg=self.BG_CARD).pack(side=tk.LEFT, padx=(0, 4))
             tk.Label(inner, text=desc, font=("Microsoft YaHei", 9),
                      fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
+
+        # ---- 功能开关 ----
+        toggle_card = tk.Frame(main, bg=self.BG_CARD, padx=14, pady=10,
+                               highlightbackground=self.BORDER, highlightthickness=1)
+        toggle_card.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(toggle_card, text="功能开关", font=self.FONT_SUB,
+                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(anchor="w", pady=(0, 6))
+
+        toggles = [
+            ("auto_accept", "自动接受"),
+            ("auto_ready", "自动开始/准备"),
+            ("auto_hex", "自动海克斯识别"),
+            ("auto_apply_runes", "套用符文"),
+        ]
+        row = tk.Frame(toggle_card, bg=self.BG_CARD)
+        row.pack(fill=tk.X)
+        for i, (key, label) in enumerate(toggles):
+            var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
+            self._toggle_vars[key] = var
+            cb = tk.Checkbutton(
+                row, text=label, variable=var,
+                font=("Microsoft YaHei", 9),
+                fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
+                activeforeground=self.TEXT, selectcolor=self.BG,
+                highlightthickness=0, bd=0,
+                command=lambda k=key, v=var: self._on_toggle(k, v),
+            )
+            cb.grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 16), pady=2)
+
+        # 符文信息 + 操作按钮
+        action_row = tk.Frame(main, bg=self.BG)
+        action_row.pack(fill=tk.X, pady=(0, 8))
+        self.refresh_btn = ttk.Button(action_row, text="🔄 刷新识别",
+                                      style='Secondary.TButton',
+                                      command=self._manual_refresh_ocr)
+        self.refresh_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 6))
+        self.rune_btn = ttk.Button(action_row, text="⚔ 套用推荐符文",
+                                   style='Secondary.TButton',
+                                   command=self._manual_apply_runes)
+        self.rune_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        self.rune_info_var = tk.StringVar(value="符文: 锁定英雄后显示推荐")
+        tk.Label(main, textvariable=self.rune_info_var, font=("Microsoft YaHei", 9),
+                 fg=self.TEXT_DIM, bg=self.BG, justify="left", anchor="w",
+                 wraplength=500).pack(fill=tk.X, pady=(0, 8))
 
         # ---- 按钮区域 ----
         btn_frame = tk.Frame(main, bg=self.BG)
@@ -833,6 +973,7 @@ class LauncherApp:
                 # 初始化 LCU 连接器
                 champions_json = os.path.join(self.dm.data_dir, 'champions.json')
                 self.lcu = LCUConnector(champions_json)
+                self.rune_service.set_lcu(self.lcu)
                 self._log("✅ LCU 连接器就绪")
 
                 # 在主线程创建 overlay
@@ -855,15 +996,23 @@ class LauncherApp:
             self.overlay = OverlayApp(self.overlay_window, self.overlay_queue)
 
             # 启动后台控制器
+            self.rune_service.set_lcu(self.lcu)
             self.controller = GUIController(
                 self.overlay_queue, self.gui_queue,
-                self.dm, self.analyzer, self.lcu
+                self.dm, self.analyzer, self.lcu,
+                settings=self.settings,
+                rune_service=self.rune_service,
             )
             self.controller.start()
 
             self.engine_running = True
             self._set_status("运行中", self.SUCCESS)
-            self._log("✅ 引擎已启动! F6=分析 | F7=识别 | F8=重置")
+            self._log("✅ 引擎已启动! F6=刷新识别 | F7=识别 | F8=重置 | 自动海克斯 Lv1/7/11/15")
+            if self.settings.get("overlay_topmost", True) and self.overlay_window:
+                try:
+                    self.overlay_window.attributes("-topmost", True)
+                except Exception:
+                    pass
             self._start_pulse()
 
             # 启动托盘
@@ -959,7 +1108,7 @@ class LauncherApp:
             messagebox.showinfo("提示", "请先点击「开始识别」再最小化到托盘")
             return
         self.root.withdraw()
-        self.tray.notify("ARAM 海克斯助手", "程序已最小化到系统托盘，热键仍然有效")
+        self.tray.notify("ARAM 全能助手", "程序已最小化到系统托盘，热键仍然有效")
         # 确保 overlay 仍然可见
         if self.overlay_window:
             self.root.after(100, self._ensure_overlay_visible)
@@ -1060,6 +1209,15 @@ class LauncherApp:
             self._log("重新加载数据...")
             self._load_data()
 
+        elif event == "log":
+            self._log(msg.get("text", ""))
+
+        elif event == "rune_info":
+            info = msg.get("text", "")
+            # 单行摘要
+            first = info.splitlines()[0] if info else ""
+            self.rune_info_var.set(first or "符文推荐已更新")
+
     # ==========================================
     # 手动英雄输入
     # ==========================================
@@ -1107,6 +1265,69 @@ class LauncherApp:
                 self._log(f"❌ 英雄 [{hero_name}] 不在数据库中")
         else:
             self._log(f"⚠ 请先点击「开始识别」")
+
+    # ==========================================
+    # 设置 / 开关 / 符文
+    # ==========================================
+
+    def _load_settings(self):
+        data = dict(DEFAULT_SETTINGS)
+        try:
+            if os.path.exists(SETTINGS_FILE):
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data.update({k: bool(v) for k, v in loaded.items() if k in DEFAULT_SETTINGS})
+        except Exception as e:
+            print(f"设置加载失败: {e}")
+        return data
+
+    def _save_settings(self):
+        try:
+            os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"设置保存失败: {e}")
+
+    def _on_toggle(self, key, var):
+        value = bool(var.get())
+        self.settings[key] = value
+        self._save_settings()
+        if self.controller and self.engine_running:
+            self.controller.update_setting(key, value)
+        labels = {
+            "auto_accept": "自动接受",
+            "auto_ready": "自动开始/准备",
+            "auto_hex": "自动海克斯识别",
+            "auto_apply_runes": "套用符文",
+        }
+        self._log(f"{'✅ 开启' if value else '⏸ 关闭'} {labels.get(key, key)}")
+
+    def _manual_refresh_ocr(self):
+        if not self.controller or not self.engine_running:
+            self._log("⚠ 请先点击「开始识别」")
+            return
+        self._log("手动刷新识别…")
+        threading.Thread(target=self.controller.trigger_analyze, daemon=True).start()
+
+    def _manual_apply_runes(self):
+        if not self.controller or not self.engine_running:
+            # 仍可展示推荐
+            hero = self.hero_var.get()
+            if hero and hero != "—":
+                page, source = self.rune_service.recommend(hero)
+                self._log(self.rune_service.format_summary(page, source))
+                ok, msg = self.rune_service.apply(page)
+                self._log(msg)
+            else:
+                self._log("⚠ 请先锁定英雄并启动引擎")
+            return
+
+        def _run():
+            ok, msg = self.controller.apply_runes_for_current()
+            self.gui_queue.put({"event": "log", "text": ("✅ " if ok else "❌ ") + msg})
+        threading.Thread(target=_run, daemon=True).start()
 
     # ==========================================
     # UI 辅助方法
@@ -1244,7 +1465,7 @@ def main():
 
     except Exception as e:
         try:
-            messagebox.showerror("ARAM 海克斯助手 - 启动错误",
+            messagebox.showerror("ARAM 全能助手 - 启动错误",
                                  f"程序启动时发生错误:\n\n{traceback.format_exc()}")
         except Exception:
             print(f"FATAL: {e}")

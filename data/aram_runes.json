@@ -1,0 +1,353 @@
+{
+  "_meta": {
+    "note": "本地 ARAM 常用符文脚手架。可按英雄中文名覆盖；缺省走 roles/default。IDs 来自 Community Dragon。",
+    "style_ids": {
+      "精密": 8000,
+      "主宰": 8100,
+      "巫术": 8200,
+      "坚决": 8400,
+      "启迪": 8300
+    }
+  },
+  "default": {
+    "name": "ARAM助手-通用",
+    "primaryStyleId": 8200,
+    "subStyleId": 8100,
+    "selectedPerkIds": [
+      8229,
+      8226,
+      8210,
+      8237,
+      8139,
+      8135,
+      5008,
+      5008,
+      5002
+    ],
+    "primary_cn": "巫术 · 奥术彗星",
+    "secondary_cn": "主宰",
+    "note": "通用法术输出兜底"
+  },
+  "roles": {
+    "mage": {
+      "name": "ARAM助手-法师",
+      "primaryStyleId": 8200,
+      "subStyleId": 8100,
+      "selectedPerkIds": [
+        8229,
+        8226,
+        8210,
+        8237,
+        8139,
+        8135,
+        5008,
+        5008,
+        5003
+      ],
+      "primary_cn": "巫术 · 奥术彗星",
+      "secondary_cn": "主宰"
+    },
+    "marksman": {
+      "name": "ARAM助手-射手",
+      "primaryStyleId": 8000,
+      "subStyleId": 8100,
+      "selectedPerkIds": [
+        8008,
+        9111,
+        9104,
+        8014,
+        8139,
+        8135,
+        5005,
+        5008,
+        5002
+      ],
+      "primary_cn": "精密 · 致命节奏",
+      "secondary_cn": "主宰"
+    },
+    "fighter": {
+      "name": "ARAM助手-战士",
+      "primaryStyleId": 8000,
+      "subStyleId": 8400,
+      "selectedPerkIds": [
+        8010,
+        9111,
+        9105,
+        8014,
+        8473,
+        8242,
+        5008,
+        5008,
+        5002
+      ],
+      "primary_cn": "精密 · 征服者",
+      "secondary_cn": "坚决"
+    },
+    "tank": {
+      "name": "ARAM助手-坦克",
+      "primaryStyleId": 8400,
+      "subStyleId": 8000,
+      "selectedPerkIds": [
+        8439,
+        8446,
+        8473,
+        8451,
+        9111,
+        9105,
+        5007,
+        5002,
+        5001
+      ],
+      "primary_cn": "坚决 · 余震",
+      "secondary_cn": "精密"
+    },
+    "assassin": {
+      "name": "ARAM助手-刺客",
+      "primaryStyleId": 8100,
+      "subStyleId": 8000,
+      "selectedPerkIds": [
+        8112,
+        8143,
+        8138,
+        8135,
+        9111,
+        8014,
+        5008,
+        5008,
+        5002
+      ],
+      "primary_cn": "主宰 · 电刑",
+      "secondary_cn": "精密"
+    },
+    "support": {
+      "name": "ARAM助手-辅助",
+      "primaryStyleId": 8400,
+      "subStyleId": 8300,
+      "selectedPerkIds": [
+        8465,
+        8463,
+        8473,
+        8453,
+        8345,
+        8347,
+        5007,
+        5002,
+        5001
+      ],
+      "primary_cn": "坚决 · 守护者",
+      "secondary_cn": "启迪"
+    }
+  },
+  "champions": {
+    "九尾妖狐": {
+      "role": "mage",
+      "name": "ARAM助手-九尾妖狐",
+      "primaryStyleId": 8200,
+      "subStyleId": 8100,
+      "selectedPerkIds": [
+        8229,
+        8226,
+        8210,
+        8237,
+        8139,
+        8135,
+        5008,
+        5008,
+        5003
+      ],
+      "primary_cn": "巫术 · 奥术彗星",
+      "secondary_cn": "主宰"
+    },
+    "疾风剑豪": {
+      "role": "fighter",
+      "name": "ARAM助手-疾风剑豪",
+      "primaryStyleId": 8000,
+      "subStyleId": 8100,
+      "selectedPerkIds": [
+        8008,
+        9111,
+        9104,
+        8014,
+        8143,
+        8135,
+        5005,
+        5008,
+        5002
+      ],
+      "primary_cn": "精密 · 致命节奏",
+      "secondary_cn": "主宰"
+    },
+    "暗裔剑魔": {
+      "role": "fighter",
+      "name": "ARAM助手-暗裔剑魔",
+      "primaryStyleId": 8000,
+      "subStyleId": 8400,
+      "selectedPerkIds": [
+        8010,
+        9111,
+        9105,
+        8014,
+        8473,
+        8242,
+        5008,
+        5008,
+        5002
+      ],
+      "primary_cn": "精密 · 征服者",
+      "secondary_cn": "坚决"
+    },
+    "探险家": {
+      "role": "marksman",
+      "name": "ARAM助手-探险家",
+      "primaryStyleId": 8000,
+      "subStyleId": 8100,
+      "selectedPerkIds": [
+        8008,
+        9111,
+        9104,
+        8014,
+        8139,
+        8135,
+        5005,
+        5008,
+        5002
+      ],
+      "primary_cn": "精密 · 致命节奏",
+      "secondary_cn": "主宰"
+    },
+    "牛头酋长": {
+      "role": "tank",
+      "name": "ARAM助手-牛头酋长",
+      "primaryStyleId": 8400,
+      "subStyleId": 8300,
+      "selectedPerkIds": [
+        8439,
+        8463,
+        8473,
+        8451,
+        8345,
+        8347,
+        5007,
+        5002,
+        5001
+      ],
+      "primary_cn": "坚决 · 余震",
+      "secondary_cn": "启迪"
+    }
+  },
+  "role_hints": {
+    "mage": [
+      "法师",
+      "Ahri",
+      "Annie",
+      "Brand",
+      "Lux",
+      "Syndra",
+      "Veigar",
+      "Xerath",
+      "Ziggs",
+      "Swain",
+      "Orianna",
+      "Viktor",
+      "Malzahar",
+      "Anivia",
+      "Cassiopeia",
+      "Heimerdinger",
+      "Velkoz",
+      "Zyra",
+      "Morgana",
+      "Karma",
+      "Lulu",
+      "Neeko",
+      "Seraphine",
+      "Hwei",
+      "Aurora"
+    ],
+    "marksman": [
+      "射手",
+      "Ashe",
+      "Caitlyn",
+      "Jinx",
+      "Ezreal",
+      "Jhin",
+      "KaiSa",
+      "Lucian",
+      "MissFortune",
+      "Sivir",
+      "Tristana",
+      "Twitch",
+      "Varus",
+      "Vayne",
+      "Xayah",
+      "Aphelios",
+      "Samira",
+      "Zeri",
+      "Smolder"
+    ],
+    "fighter": [
+      "战士",
+      "Aatrox",
+      "Darius",
+      "Garen",
+      "Irelia",
+      "Jax",
+      "Renekton",
+      "Riven",
+      "Sett",
+      "Yasuo",
+      "Yone",
+      "Tryndamere",
+      "Fiora",
+      "Camille",
+      "Gwen",
+      "Ambessa"
+    ],
+    "tank": [
+      "坦克",
+      "Alistar",
+      "Leona",
+      "Malphite",
+      "Maokai",
+      "Nautilus",
+      "Ornn",
+      "Sion",
+      "TahmKench",
+      "ChoGath",
+      "DrMundo",
+      "Zac",
+      "Rammus",
+      "Sejuani"
+    ],
+    "assassin": [
+      "刺客",
+      "Akali",
+      "Ekko",
+      "Fizz",
+      "Katarina",
+      "Khazix",
+      "Leblanc",
+      "Qiyana",
+      "Rengar",
+      "Talon",
+      "Zed",
+      "Diana",
+      "Pyke",
+      "Eve",
+      "Kayn"
+    ],
+    "support": [
+      "辅助",
+      "Soraka",
+      "Sona",
+      "Nami",
+      "Janna",
+      "Yuumi",
+      "Bard",
+      "Thresh",
+      "Blitzcrank",
+      "Rakan",
+      "Milio",
+      "Renata"
+    ]
+  }
+}

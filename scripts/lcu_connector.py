@@ -341,3 +341,114 @@ class LCUConnector:
                 return hero, "ChampSelect"
 
         return None, phase or ""
+
+    # ==========================================
+    # 通用 HTTP 封装 (供 matchmaking / runes 使用)
+    # ==========================================
+
+    def get_json(self, endpoint):
+        """GET 并返回 JSON；失败返回 None。"""
+        resp = self._request('GET', endpoint)
+        if resp is None:
+            return None
+        if resp.status_code == 204:
+            return {}
+        if resp.status_code != 200:
+            return None
+        try:
+            return resp.json()
+        except Exception:
+            return None
+
+    def post_ok(self, endpoint, json_body=None):
+        kwargs = {}
+        if json_body is not None:
+            kwargs['json'] = json_body
+        resp = self._request('POST', endpoint, **kwargs)
+        return bool(resp is not None and resp.status_code in (200, 201, 204))
+
+    def put_ok(self, endpoint, json_body=None):
+        kwargs = {}
+        if json_body is not None:
+            kwargs['json'] = json_body
+        resp = self._request('PUT', endpoint, **kwargs)
+        return bool(resp is not None and resp.status_code in (200, 201, 204))
+
+    def delete_ok(self, endpoint):
+        resp = self._request('DELETE', endpoint)
+        return bool(resp is not None and resp.status_code in (200, 204))
+
+    def post_json(self, endpoint, json_body=None):
+        kwargs = {}
+        if json_body is not None:
+            kwargs['json'] = json_body
+        resp = self._request('POST', endpoint, **kwargs)
+        if resp is None or resp.status_code not in (200, 201):
+            return None
+        try:
+            return resp.json()
+        except Exception:
+            return {}
+
+    # ==========================================
+    # Live Client Data: 等级 / 死亡状态
+    # ==========================================
+
+    def get_live_player_state(self):
+        """
+        读取 Live Client Data，返回:
+          {"level": int, "is_dead": bool, "current_health": float, "champion": str}
+        不在游戏内时返回 None。
+        """
+        # 优先 activeplayer
+        try:
+            resp = requests.get(
+                'https://127.0.0.1:2999/liveclientdata/activeplayer',
+                verify=False, timeout=self.LIVE_API_TIMEOUT
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                level = data.get('level')
+                if level is None:
+                    stats = data.get('championStats') or {}
+                    level = stats.get('level')
+                health = None
+                stats = data.get('championStats') or {}
+                if 'currentHealth' in stats:
+                    health = stats.get('currentHealth')
+                elif 'currentHealth' in data:
+                    health = data.get('currentHealth')
+                is_dead = False
+                if health is not None:
+                    try:
+                        is_dead = float(health) <= 0
+                    except (TypeError, ValueError):
+                        is_dead = False
+                # playerlist 补充 isDead（更可靠）
+                try:
+                    pl = requests.get(
+                        'https://127.0.0.1:2999/liveclientdata/playerlist',
+                        verify=False, timeout=self.LIVE_API_TIMEOUT
+                    )
+                    if pl.status_code == 200:
+                        my_name = (data.get('summonerName') or '').strip()
+                        for p in pl.json():
+                            if my_name and p.get('summonerName') == my_name:
+                                if 'isDead' in p:
+                                    is_dead = bool(p.get('isDead'))
+                                if level is None and p.get('level') is not None:
+                                    level = p.get('level')
+                                break
+                except Exception:
+                    pass
+                return {
+                    "level": int(level or 0),
+                    "is_dead": bool(is_dead),
+                    "current_health": health,
+                    "champion": data.get('championName') or '',
+                }
+        except requests.exceptions.ConnectionError:
+            return None
+        except Exception:
+            return None
+        return None

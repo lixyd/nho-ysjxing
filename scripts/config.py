@@ -21,3 +21,19 @@ DATA_DIR = os.path.join(BASE_DIR, 'data')
 CHAMPION_ID_FILE = os.path.join(DATA_DIR, "champions.json")
 PINYIN_FILE      = os.path.join(DATA_DIR, "pinyin_map.json")
 CSV_FILE         = os.path.join(DATA_DIR, "hero_augments.csv")
+
+# 扩展功能数据
+SETTINGS_FILE   = os.path.join(DATA_DIR, "settings.json")
+ARAM_RUNES_FILE = os.path.join(DATA_DIR, "aram_runes.json")
+
+# 海克斯大乱斗等级检查点
+HEX_LEVEL_CHECKPOINTS = (1, 7, 11, 15)
+
+# 默认开关
+DEFAULT_SETTINGS = {
+    "auto_accept": True,
+    "auto_ready": True,
+    "auto_hex": True,
+    "auto_apply_runes": False,
+    "overlay_topmost": True,
+}

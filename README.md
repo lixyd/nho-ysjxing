@@ -1,11 +1,12 @@
-# LOL ARAM Mayhem Hextech Helper (大乱斗海克斯助手)
+# LOL ARAM 全能助手（海克斯 / 匹配 / 符文）
 
 ![Python](https://img.shields.io/badge/Python-3.9~3.12-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-一个基于 **计算机视觉 (OCR)** 和 **大数据分析** 的英雄联盟极地大乱斗 (ARAM) 辅助工具。
-它能自动识别游戏内的海克斯强化符文，并根据胜率数据提供最佳选择建议。
+面向 **极地大乱斗 · 海克斯大乱斗 (ARAM Mayhem)** 的 Windows 本地助手，目标是用 **LCU API + 屏幕 OCR 遮罩** 覆盖日常所需，减少对 LeagueAkari 等工具的依赖。
+
+**不做**：游戏进程注入、内存读写、自动点击游戏窗口。海克斯仅遮罩推荐；符文可通过官方 LCU `lol-perks` 套用。
 
  <p align="center">
       <img src="./docs/demo.png" width="800" alt="游戏内演示效果">
@@ -13,138 +14,118 @@
       <em>图：海克斯识别与颜色提示效果展示（游戏内）</em>
     </p>
 
- <p align="center">
-      <img src="./docs/demo_main.png" width="400" alt="主界面功能演示">
-      <img src="./docs/demo_update.png" width="400" alt="高级更新界面演示">
-      <br>
-      <em>图：全新可视化主界面与多样化数据更新选项</em>
-    </p>
-
-> **数据来源说明**: 本项目的数据抓取自 [OP.GG](https://op.gg/zh-cn/lol/modes/aram-mayhem)。本工具仅供学习交流使用。
+> **数据来源说明**: 海克斯胜率数据抓取自 [OP.GG](https://op.gg/zh-cn/lol/modes/aram-mayhem)。本工具仅供学习交流使用。
 
 ---
 
-## ⚠️ 核心前置条件 (Prerequisites)
+## ✨ 功能一览
 
-1.  **管理员身份运行**: 程序涉及全局热键监听和截取客户端进程信息，**建议以管理员身份**运行解压后的 `ARAMHelper.exe`（开发者请以管理员权限运行 Python 或所在终端）。
-2.  **游戏显示模式**: 必须设置为 **“无边框” (Borderless)**。
-3.  **游戏进程状态**: **推荐先启动英雄联盟客户端并登录**，程序能够自动连接游戏本地服务 (LCU API) 以获取当前英雄。
-4.  **屏幕分辨率**: 程序会根据主显示器分辨率**自动适配**（以 2K 为基准等比缩放），支持 1080p / 2K / 4K 等常见分辨率，无需手动配置。
+| 开关 | 作用 |
+|------|------|
+| **自动接受** | 轮询 `/lol-matchmaking/v1/ready-check`，状态为 `InProgress` 等时 `POST .../accept` |
+| **自动开始/准备** | 大厅 `PUT /lol-lobby/v1/parties/ready`；可发起 `POST /lol-lobby/v2/lobby/matchmaking/search`；选人阶段尝试 `POST /lol-champ-select/v1/session/my-selection/ready` |
+| **自动海克斯识别** | 通过 Live Client (`:2999`) 读取等级，在 **1 / 7 / 11 / 15** 检查点自动 OCR；死亡或检测到 UI 文字时触发；选完后空闲直到下一检查点 |
+| **套用符文** | 开启后锁定英雄时自动走 LCU 套用；也可点「套用推荐符文」。数据见 `data/aram_runes.json` |
 
----
+其它：
 
-## ✨ 功能特性 (Features)
+* **英雄检测**：复用现有 `LCUConnector`（ChampSelect / GameFlow / Live API）
+* **手动「刷新识别」**：界面按钮或 **F6**（不依赖自动流程）
+* **无边框友好置顶遮罩**：透明穿透 overlay，始终置顶
+* **中文 UI / 中文文档**
 
-*   **🛡️ 实时遮罩**: 在游戏界面上直接显示推荐结果，无需切屏。
-*   **🔌 本地 API 联通**: 自动扫描并连接英雄联盟客户端 (LCU)，自动识别你在选人阶段摇到的英雄。
-*   **👁️ 自动识别**: 使用 `RapidOCR` 毫秒级识别屏幕上的三个海克斯选项，本地部署零延迟。
-*   **🤖 智能推荐**: 自动计算“白银/黄金/棱彩”海克斯的优先级（基于 OP.GG 等综合胜率算法）。
-*   **🎹 极简交互**: 全程依托键盘快捷键 (`F6`, `F7`, `F8`) 完成闭环操作。
-*   **🔄 数据自动维护 (全新面板)**: 
-    *   自带四维进化爬虫：**抽样校验**（极速防呆）、**智能增量**（补充新英雄）、**全量更新**、**精确打击**（支持中英拼音模糊搜找单英雄修补）。
-    *   内置 GitHub 静态库在线下载兜底，无缝拯救本地无 Chrome 和网络受限的玩家环境。
+热键：**F6** 刷新识别 · **F7** 识别英雄 · **F8** 重置
 
 ---
 
-## 🛠️ 安装指南 (Installation)
+## ⚠️ 前置条件
 
-1.  **克隆仓库**:
-    ```bash
-    git clone https://github.com/Nyx0ra/lol-aram-mayhem-hextech-helper.git
-    cd lol-aram-mayhem-hextech-helper
-    ```
-
-2.  **创建环境与安装依赖**:
-    * **推荐方式 (使用 `uv`，自动隔离并配置 Python 3.12)**:
-      ```bash
-      uv venv --python 3.12
-      uv pip install -r requirements.txt
-      ```
-    * **传统方式 (`pip`)**:
-      ```bash
-      pip install -r requirements.txt
-      ```
-
-> [!WARNING]
-> **Python 版本要求**：本项目依赖的 `rapidocr_onnxruntime` 仅支持 **Python 3.9 ~ 3.12**。使用 Python 3.13+ 会导致 OCR 引擎初始化报错 (`KeyError: 'model_path'`)。请使用 [Python 3.12](https://www.python.org/downloads/release/python-3129/) 或更低版本。
-
-> [!NOTE]
-> **关于客户端路径配置**：
-> 绝大多数情况下程序能够通过 `psutil` 跨盘符自动扫描到你的游戏。但如果你启动后发现**无法自动识别英雄**，可能是由于权限受限，此时请打开 `scripts/lcu_connector.py`，并在文件开头的 `COMMON_INSTALL_PATHS` 列表中添加你的真实英雄联盟安装路径（例如：`r"E:\Game\英雄联盟"`）。
+1. **建议以管理员身份运行**（热键、读取客户端进程/lockfile）
+2. 游戏显示模式：**无边框 (Borderless)**
+3. 推荐先登录英雄联盟客户端
+4. 分辨率自动按主屏相对 2K 缩放，无需手改坐标
 
 ---
 
-## 🚀 使用教程 (Usage)
+## 🛠️ Windows 运行方式
 
-本工具为不同需求的用户提供了两个版本的使用方式，请根据你的情况选择：
+### 方式 A：源码运行
 
-### 版本一：免安装直接运行版 (适合小白/绝大多数玩家)
+```bash
+git clone https://github.com/lixyd/lol-aram-mayhem-hextech-helper.git
+cd lol-aram-mayhem-hextech-helper
 
-不需要任何本地环境配置，直接下载即可：
+# 推荐 uv + Python 3.12
+uv venv --python 3.12
+uv pip install -r requirements.txt
+uv run python gui_launcher.py
 
-1. **获取程序**：前往 [Releases 页面](https://github.com/Nyx0ra/lol-aram-mayhem-hextech-helper/releases) 下载最新版本的压缩包（例如 `ARAMHelper_vX.X.x.zip`）。
-2. **解压及运行**：将其解压到任意目录，并**右键点击 `ARAMHelper.exe` 选择「以管理员身份运行」**。
-3. **识别与游戏内操作**：
-   * 启动程序后，若你已经在客户端选人界面，系统会自动利用 LCU API 识别你要玩的英雄并锁定。
-   * 若发现自动识别未生效（可能是提前打开了程序或网络抽风），请先尝试在游戏内按下 **`F7`** 主动读取重新绑定当前英雄。
-   * **备选方案（手动锁定）**：如果依然没连上，你也可以直接在界面输入框输入英雄**称号的首字母缩写**来秒猜锁定。例如输入 `txj`（探险家）、`jfjh`（疾风剑豪）、`xjch`（迅捷斥候）。
-   * **`F6` - 识别并分析**: 遇到弹出海克斯强化的界面：按下键盘上的 **`F6`** 键，屏幕中央会生成一层超酷的悬浮遮罩！<br/>
-     <span style="color:gold">**金色**</span>（最顶尖推荐）、<span style="color:green">**绿色**</span>（优质推荐）、<span style="color:red">**红色**</span>（查无数据/不推荐）。
-   * **`F7` - 刷新英雄**: 游戏内按 **F7** 可以让系统强制悬浮显示当前正在跟踪的英雄名称。如果在选人界面自动检测失败或使用了骰子交换英雄，立刻按下此键能主动触发接口重新刷取本局英雄。
-   * **`F8` - 内部重启 (极少使用)**: 将整个后台跟踪程序完全重置回刚双击打开时的状态并弹回主屏幕。一般情况下你直接用不到它，当你打完上一把或是骰子换人后，**下一局每次想要重置身份时只需要按 F7 即可刷新获取新英雄！**
+# 或
+pip install -r requirements.txt
+python gui_launcher.py
+```
 
-*(注：如果你想要更新本程序的胜率数据库，只需在主界面点击“**数据更新**”。推荐直接使用“抽样校验”或者兜底的“Github下载”保持同频。)*
+右键终端 / IDE → **以管理员身份运行**。
 
----
+### 方式 B：打包 EXE
 
-### 版本二：本地源码部署版 (适合开发者/极客使用)
+```bash
+python build.py
+```
 
-如果你想自己参与研究并直接基于源码运行：
+解压后右键 `ARAMHelper.exe` → 以管理员身份运行。
 
-1. **准备环境**：请确保已依照上述“安装指南”克隆了代码仓库，并在本地配置好的 Python 环境内安装了 `requirements.txt`。
-2. **启动程序**：右键点击你的 IDE终端或 CMD，选择 **“以管理员身份运行”**，执行全新的图形可视化客户端：
-   ```bash
-   # uv 方式 (推荐)
-   uv run python gui_launcher.py
+> **Python**：`rapidocr_onnxruntime` 需要 **3.9 ~ 3.12**。
 
-   # 传统方式
-   python gui_launcher.py
-   ```
-3. **数据更新 (四维自动爬虫化)**：
-    * 终端版内置了最前沿的爬虫代码。在主界面点击 **数据更新** 会呼出专用管理员面板：
-      * **抽样校验 (推荐)**：随机抽取 3 名英雄进行云端数据比对，一旦发现版本落后自动触发批量升级！
-      * **智能增量**：专门用于抓取新上线的英雄或发生改名的英雄。
-      * **全量更新**：数据库清空时大更新专用。
-      * **精确更新**：输入类似“ez”、“女警” 等简拼或者外号，后台将自动执行模糊匹配为你单抓一条数据。
-      * 此外还有无浏览器的 **GitHub 本地下载兜底**供你救急调用。
+若无法自动连 LCU，请在 `scripts/lcu_connector.py` 的 `COMMON_INSTALL_PATHS` 中加入你的安装路径。
 
 ---
 
-## ⚙️ 高级配置 (分辨率适配)
+## 📂 关键模块
 
-程序启动时会自动检测主显示器分辨率，并以 2K (2560×1440) 坐标为基准进行等比缩放，**无需手动修改任何参数**。
+```
+gui_launcher.py          # 中文 GUI + 开关 + 托盘
+main.py                  # DataManager / OCR / Overlay
+scripts/lcu_connector.py # LCU + Live Client
+scripts/matchmaking.py   # 自动接受 / 准备 / 开始匹配
+scripts/auto_hex.py      # 等级检查点自动海克斯
+scripts/runes.py         # 符文推荐与 LCU 套用
+data/aram_runes.json     # 本地符文脚手架（可自行扩充）
+data/settings.json       # 开关持久化
+data/hero_augments.csv   # 海克斯胜率库
+```
 
-> [!NOTE]
-> 自动适配要求游戏以 **无边框窗口** 模式运行。若识别区域出现偏移，可检查上述设置。
+### 已实现的 LCU 端点（匹配相关）
+
+| 能力 | 方法 | 路径 |
+|------|------|------|
+| 查询确认状态 | GET | `/lol-matchmaking/v1/ready-check` |
+| 接受确认 | POST | `/lol-matchmaking/v1/ready-check/accept` |
+| 组队准备 | PUT | `/lol-lobby/v1/parties/ready` |
+| 发起匹配 | POST | `/lol-lobby/v2/lobby/matchmaking/search` |
+| 选人准备 | POST | `/lol-champ-select/v1/session/my-selection/ready` |
+| 当前符文页 | GET/PUT | `/lol-perks/v1/currentpage` |
+| 创建/更新符文 | POST/PUT/DELETE | `/lol-perks/v1/pages`、`/lol-perks/v1/pages/{id}` |
+| 局内等级 | GET | `https://127.0.0.1:2999/liveclientdata/activeplayer`（及 playerlist） |
+
+**未做 / 弱化**：自定义房强制开始、自动秒选/秒 ban、完整外网 ARAM 符文库同步（当前为本地 JSON + 角色兜底；有 ID 即可套用）。
 
 ---
 
-## 📂 文件结构说明
+## 🎮 使用流程简述
 
-* `main.py`: 主程序（GUI 遮罩、按键监听、程序逻辑）。
-* `scripts/lcu_connector.py`: 英雄联盟本地 API 通信模块。
-* `scripts/hero_scraper.py`: 爬虫脚本（基于 Selenium 抓取数据）。
-* `scripts/updater.py`: 数据同步工具（手动触发更新、合并数据）。
-* `data/hero_augments.csv`: 核心数据库。
-
-## 📄 License
-
-MIT License.
-
+1. 打开客户端并登录 → 启动本助手 → 勾选需要的开关 → **开始识别**
+2. 排队时由「自动接受」处理 ready-check；大厅由「自动开始/准备」处理 ready / search
+3. 锁定英雄后可查看符文推荐；需要时点「套用推荐符文」或开启自动套用
+4. 进入海克斯大乱斗后，等级到 1/7/11/15 会尝试自动 OCR；也可随时 **F6 / 刷新识别**
+5. 遮罩金色=最优，绿色=可选，红色=未识别/无数据
 
 ---
 
-## 本仓库说明
+## 📄 License 与致谢
 
-本仓库基于 [Nyx0ra/lol-aram-mayhem-hextech-helper](https://github.com/Nyx0ra/lol-aram-mayhem-hextech-helper)（MIT）。
-`data/` 已更新为 **2026-09-09** 拉取的海克斯大乱斗胜率数据，便于直接使用或打包分发。
+MIT License。
+
+本仓库基于 [Nyx0ra/lol-aram-mayhem-hextech-helper](https://github.com/Nyx0ra/lol-aram-mayhem-hextech-helper)（MIT，Copyright © Nyx0ra）演进。请保留原作者归属。
+
+`data/` 海克斯数据已更新为便于直接使用的快照；符文页为本地脚手架，欢迎按英雄补全 `data/aram_runes.json`。
