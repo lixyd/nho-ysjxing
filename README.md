@@ -1,268 +1,59 @@
 # nho有手就行
 
+Windows 本地助手：极地大乱斗 · 海克斯大乱斗（ARAM Mayhem）。LCU API + OCR 遮罩推荐。
 
-### 游戏内效果
+**不做** 进程注入 / 内存读写 / 自动点击游戏窗。符文走官方 LCU `lol-perks`。
 
-![海克斯推荐叠层](docs/demo_ingame_hex.png)
+![海克斯推荐](docs/demo_ingame_hex.png)
 
-## 下载安装包
+## 用
 
-前往 **[Releases](https://github.com/lixyd/nho-ysjxing/releases)** 下载最新 `nho-ysjxing-windows.zip`：解压后以管理员运行 `ARAMHelper.exe`，游戏请用无边框窗口模式。
+- [Releases](https://github.com/lixyd/nho-ysjxing/releases) 下 `nho-ysjxing-windows.zip` → 管理员运行 `ARAMHelper.exe`，游戏**无边框**。
+- 或 Actions → **Build Windows** → Run workflow 下 Artifacts（约 14 天）。打 `v*` tag 会挂到 Release。
 
+源码（Python **3.9–3.12**，rapidocr 不支持 3.13+；管理员终端）：
 
-
-## Windows 安装包
-
-通过 GitHub Actions 在 `windows-latest` 上自动打包（不随每次 `main` 推送触发，以节省私有仓库 Actions 分钟数）：
-
-1. **手动构建 → Artifacts**  
-   打开仓库 **Actions** → 选 **Build Windows** → **Run workflow**。跑完后在该次 run 的 **Artifacts** 下载 `nho-ysjxing-windows`（约保留 14 天）。解压得到 `ARAMHelper/`，以管理员运行 `ARAMHelper.exe`。
-
-2. **打 tag 发 Release**  
-   推送形如 `vX.Y.Z` 的 tag（例如 `git tag v1.0.0 && git push origin v1.0.0`），同一 workflow 会构建并把 `nho-ysjxing-windows.zip` 挂到对应 **Release**。也可直接从 [Releases](https://github.com/lixyd/nho-ysjxing/releases) 下载。
-
-工作流文件：`.github/workflows/build-windows.yml`。
-
----
-![Python](https://img.shields.io/badge/Python-3.9~3.12-blue)
-![Platform](https://img.shields.io/badge/Platform-Windows-0078D6)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-**产品名：nho有手就行** — 面向 **极地大乱斗 · 海克斯大乱斗 (ARAM Mayhem)** 的 Windows 本地助手，用 **LCU API + 屏幕 OCR 遮罩** 覆盖日常所需，减少对 LeagueAkari 等工具的依赖。
-
-**不做**：游戏进程注入、内存读写、自动点击游戏窗口。海克斯仅遮罩推荐；符文可通过官方 LCU `lol-perks` 套用。
-
- <p align="center">
-      <img src="./docs/demo_ingame_hex.png" width="800" alt="游戏内演示效果">
-      <br>
-      <em>图：海克斯识别与颜色提示效果展示（游戏内）</em>
-    </p>
-
-## 📚 数据来源说明
-
-| 数据类型 | 来源 |
-|----------|------|
-| 符文 / 英雄 **ID、名称** | Riot 官方 [Data Dragon](https://ddragon.leagueoflegends.com/) / [Community Dragon](https://www.communitydragon.org/)（联盟静态数据） |
-| 大乱斗 **推荐组合统计**（胜率/选用） | **官网不提供**胜率推荐；当前来自对局统计数据集（`@champ-r/u.gg-aram` 等），并已用官网最新 perk ID（Data Dragon `runesReforged`）校验 / 映射 |
-| 海克斯胜率 | [OP.GG ARAM Mayhem](https://op.gg/zh-cn/lol/modes/aram-mayhem) 抓取快照 |
-| **海克斯「是什么」（识别层）** | Riot 官方 LCU 游戏数据，经 Community Dragon 镜像直读，**不爬虫**（见下节） |
-
-本工具仅供学习交流使用。
-
-当前符文库 `_meta.ddragonVersion` 见 `data/aram_runes.json`（构建时拉取最新 Data Dragon 版本）。
-
----
-
-## 🧩 海克斯识别层（官方数据，不爬虫）
-
-插件里有**两张表、两件事**，别混起来：
-
-| | 文件 | 回答的问题 | 来源 |
-|---|---|---|---|
-| **识别层** | `data/augments_official.json` | 这到底是不是一个合法海克斯？叫什么？什么稀有度？ | Riot 官方 LCU 数据（Community Dragon 镜像） |
-| **排名层** | `data/hero_augments.csv` | 这个英雄身上它排第几？ | OP.GG 抓取快照 |
-
-OCR 识别时**先认、再排**：官方库认出来了但本英雄没排名，会显示「官方池内 · 本英雄暂无排名」，
-而不是退化成「未识别」。官方池不含 `？？？` 这类占位名（Riot 自己的残留名会被过滤掉）。
-
-### 数据源
-
-| 文件 | 路径 | 作用 |
-|---|---|---|
-| `augment-lists.json` | `plugins/rcp-be-lol-game-data/global/<locale>/v1/` | 按 `modeName` 分池 |
-| `cherry-augments.json` | 同上 | 官方总表：本地化名称 + 稀有度 + 图标 |
-| `kiwi.bin.json` | `game/maps/modespecificdata/` | 描述文本 / platformId |
-| `lol.stringtable.json` | `game/<locale>/data/menu/en_us/` | 字符串表（**键大小写不敏感**） |
-
-### 两个必须记住的坑
-
-1. **国服要取并集**：ARAM 海克斯大乱斗的客户端代号是 `kiwi`，国服是 `kiwi_jade` 变体。
-   池子必须取 `KIWI ∪ KIWI_JADE = 247` 个（专属 142 / 共用 105）；
-   只取 `KIWI`(223) 会漏 24 个。
-2. **`modeName` 要核对**：`CHERRY` 是竞技场，不要拿它当 ARAM 数据源。
-
-### 构建与维护
-
-```bash
-python scripts/build_augments_official.py          # 完整构建（含中文描述）
-python scripts/build_augments_official.py --mode KIWI,KIWI_JADE
-python scripts/reconcile_augments.py               # 与 hero_augments.csv 对账
-python scripts/repair_hero_augments.py --apply      # 清理 CSV 占位行（自动备份）
-python scripts/verify_augment_coverage.py           # 覆盖率回归测试
-```
-
-自检：程序启动后会后台静默检查一次（默认 3 天一次），**直连 Community Dragon**
-只拉两个小文件（约 140KB）重建识别层，不依赖本仓库的 GitHub 发布。
-指纹一致就不覆盖，已抓好的中文描述会被保留。
-
----
-
-## ✨ 功能一览
-
-| 开关 | 作用 |
-|------|------|
-| **自动接受** | 轮询 `/lol-matchmaking/v1/ready-check`，状态为 `InProgress` 等时 `POST .../accept` |
-| **自动开始/准备** | 大厅 `PUT /lol-lobby/v1/parties/ready`；可发起 `POST /lol-lobby/v2/lobby/matchmaking/search`；选人阶段尝试 `POST /lol-champ-select/v1/session/my-selection/ready` |
-| **执行延迟** | 接受 / 准备 / 开始前可选 **立即 / 3秒 / 5秒 / 10秒** 倒计时（默认 5 秒，写入 `data/settings.json` 的 `auto_accept_delay`）；倒计时中关闭对应开关可取消 |
-| **自动海克斯识别** | Live Client 死亡/回泉水代理 + Lv **1/7/11/15** 检查点 + hex OCR 选牌 UI；选项刷新后自动重推荐并提示「刷新后已更新推荐」 |
-| **套用符文** | 开启后锁定英雄时自动走 LCU 套用；也可点「套用推荐符文」。数据见 `data/aram_runes.json` |
-
-其它：
-
-* **英雄检测**：复用现有 `LCUConnector`（ChampSelect / GameFlow / Live API）
-* **手动「刷新识别」**：界面「刷新识别」按钮（不依赖自动流程；完成后提醒「刷新后已更新推荐」）
-* **选项刷新重推荐**：三张海克斯 OCR 文本变化（或局内刷新）后 debounce ~0.7s 立即重排并横幅/托盘提醒
-* **无边框友好置顶遮罩**：透明穿透 overlay，始终置顶
-* **深色 LoL 风 UI**：对局自动化 / 英雄·符文 / 海克斯 分区卡片
-* **中文 UI / 中文文档**
-
-界面按钮：**刷新识别** · **识别英雄** · **重置**（无需全局热键）
-
----
-
-## ⚠️ 前置条件
-
-1. **建议以管理员身份运行**（读取客户端进程/lockfile）
-2. 游戏显示模式：**无边框 (Borderless)**
-3. 推荐先登录英雄联盟客户端
-4. 分辨率自动按主屏相对 2K 缩放，无需手改坐标
-
----
-
-## 🛠️ Windows 运行方式
-
-### 方式 A：源码运行
-
-```bash
+```bat
 git clone https://github.com/lixyd/nho-ysjxing.git
 cd nho-ysjxing
-
-# 推荐 uv + Python 3.12（须 3.9~3.12，rapidocr_onnxruntime 不支持 3.13+）
-uv venv --python 3.12
-uv pip install -r requirements.txt
-uv run python gui_launcher.py
-
-# 或
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+python -m venv .venv & .venv\Scripts\activate & pip install -r requirements.txt
 python gui_launcher.py
 ```
 
-右键终端 / IDE → **以管理员身份运行**。
+Windows 本机打包：`python build.py` → `dist\build_*\ARAMHelper\`。不要在 Linux 交叉打包 exe。
 
-### 方式 B：在 Windows 上打包 EXE（须在 Windows 机执行）
+登录客户端 → 开助手 → 勾开关 → **开始识别**。遮罩：金=最优，绿=可选，红=未识别。
 
-> **不要在 Linux 上交叉打包 Windows exe。** 请在本机 Windows + Python 3.9~3.12 下执行：
+## 数据
 
-```bat
-cd nho-ysjxing
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python build.py
-```
+| 层 | 文件 | 答 | 源 |
+|---|---|---|---|
+| 识别 | `data/augments_official.json` | 是不是合法海克斯、名、稀有度 | Riot LCU / Community Dragon，不爬 |
+| 排名 | `data/hero_augments.csv` | 这英雄排第几 | OP.GG ARAM Mayhem 快照 |
+| 符文 | `data/aram_runes.json` | 套哪套 | Data Dragon + `@champ-r/u.gg-aram`，perk ID 已对齐 |
 
-产物目录类似：`dist\build_<timestamp>\ARAMHelper\`  
-解压/进入后右键 `ARAMHelper.exe` → **以管理员身份运行**。
+OCR **先认再排**。官方池有、本英雄无排名 →「官方池内 · 本英雄暂无排名」，不退化成未识别。
 
-可选：仅刷新符文数据（需本机构建脚本依赖的 u.gg 提取包时）：
+**坑**
 
-```bat
-python scripts\build_aram_runes.py
-```
+- 国服池必须 `KIWI ∪ KIWI_JADE = 247`（只取 KIWI=223 漏 24）。`CHERRY` 是竞技场，不是 ARAM。
+- 海克斯仅 `gameflow=InProgress` 且 Live Client `:2999` 有真实玩家数据才跑；死亡/泉水选牌或 Lv **1/7/11/15**。加载中、大厅、选人不识别（符文套用不受影响）。
 
-若无法自动连 LCU，请在 `scripts/lcu_connector.py` 的 `COMMON_INSTALL_PATHS` 中加入你的安装路径。
+构建：`python scripts/build_augments_official.py`；对账 `reconcile_augments.py`；覆盖率 `verify_augment_coverage.py`。启动后每 3 天静默拉 CDragon ~140KB 重建识别层，指纹一致不覆盖。
 
----
+## 功能
 
-## 📂 关键模块
+自动接受 ready-check · 大厅准备/开始匹配 · 延迟立即/3/5/10s（默认 5，写入 `data/settings.json`）· 锁定英雄套符文 · 选项刷新 ~0.7s 重推荐。
 
-```
-gui_launcher.py          # 中文 GUI + 开关 + 托盘（窗口标题：nho有手就行）
-main.py                  # DataManager / OCR / Overlay
-scripts/lcu_connector.py # LCU + Live Client
-scripts/matchmaking.py   # 自动接受 / 准备 / 开始匹配
-scripts/auto_hex.py      # 泉水/死亡/检查点/选项刷新自动海克斯
-scripts/runes.py         # 符文推荐与 LCU 套用
-scripts/build_aram_runes.py  # 自 Data Dragon + 对局统计重建 aram_runes.json
-data/aram_runes.json     # 全英雄 ARAM 符文（perk ID 已对齐 DDragon）
-data/settings.json       # 开关持久化
-data/hero_augments.csv   # 海克斯胜率库
-build.py                 # Windows PyInstaller 一键打包
-assets/                  # icon.ico / icon.png / logo.png / donate.jpg
-```
+入口：`gui_launcher.py` / `main.py` / `scripts/{lcu_connector,matchmaking,auto_hex,runes}.py`。
 
-### 已实现的 LCU 端点（匹配相关）
+## 更新
 
-| 能力 | 方法 | 路径 |
-|------|------|------|
-| 查询确认状态 | GET | `/lol-matchmaking/v1/ready-check` |
-| 接受确认 | POST | `/lol-matchmaking/v1/ready-check/accept` |
-| 组队准备 | PUT | `/lol-lobby/v1/parties/ready` |
-| 发起匹配 | POST | `/lol-lobby/v2/lobby/matchmaking/search` |
-| 选人准备 | POST | `/lol-champ-select/v1/session/my-selection/ready` |
-| 当前符文页 | GET/PUT | `/lol-perks/v1/currentpage` |
-| 创建/更新符文 | POST/PUT/DELETE | `/lol-perks/v1/pages`、`/lol-perks/v1/pages/{id}` |
-| 局内等级/死亡 | GET | `https://127.0.0.1:2999/liveclientdata/activeplayer` + `playerlist`（`level` / `isDead` / `respawnTimer`；无地图坐标） |
+| 做什么 | 怎么做 |
+|---|---|
+| 代码 | push `main` |
+| 安装包 | `v*` tag 或 Actions 手动 Build Windows |
+| 符文 | GUI「📦 数据更新」/ `python scripts/build_aram_runes.py` / 每周 **Update ARAM Runes** |
+| 海克斯 | GUI「数据更新」 |
 
-**未做 / 弱化**：自定义房强制开始、自动秒选/秒 ban、完整外网 ARAM 符文库实时同步（当前为本地 JSON + 角色兜底；有 ID 即可套用）。
-
-### 自动海克斯触发信号（简述）
-
-**硬门禁**：仅当 LCU `gameflow-phase == InProgress` **且** Live Client（2999）返回真实玩家数据时，才允许海克斯 OCR / 自动识别 / 遮罩推荐 / 左上角「刷新」浮钮。`GameStart` 加载中、大厅、选人、客户端主页一律不识别（「进入对局且右上角读秒出现后再识别海克斯」）。选人阶段的符文推荐/套用不受影响。
-
-| 信号 | 来源 | 说明 |
-|------|------|------|
-| **死亡 / 回泉水代理** | Live Client `playerlist.isDead`（及血量≤0） | 大乱斗选牌常在死亡回泉水时出现。**Live Client 不提供地图 XY**，故 `near_fountain` 无法直接判定，以死亡 + OCR UI 作为泉水/选牌窗口代理 |
-| **等级检查点** | Live Client `activeplayer.level` | 仍保留 **1 / 7 / 11 / 15**；UI 未开先记欠账，死亡/泉水或选牌 UI 再兑现 |
-| **选牌 UI 文字** | 现有 `hex_1/2/3` OCR 区域 | 屏幕上出现海克斯选项文字即视为可推荐 |
-| **选项刷新** | 三区 OCR 文本快照变化，或手动「刷新识别」 | debounce ~0.7s 后重识别，GUI 横幅 + 托盘提示「刷新后已更新推荐」 |
-
-
----
-
-## 🎮 使用流程简述
-
-1. 打开客户端并登录 → 启动 **nho有手就行** → 勾选需要的开关 → **开始识别**
-2. 排队时由「自动接受」处理 ready-check（可设 3/5/10 秒延迟倒计时）；大厅由「自动开始/准备」处理 ready / search
-3. 锁定英雄后可查看符文推荐；需要时点「套用推荐符文」或开启自动套用
-4. **进入对局且右上角读秒出现后**再识别海克斯；死亡/泉水选牌 UI 或等级 1/7/11/15 会自动 OCR；选项刷新后自动重推荐；对局内可点左上角 **刷新** / 面板 **刷新识别**
-5. 遮罩金色=最优，绿色=可选，红色=未识别/无数据
-
----
-
-
----
-
-## 📦 数据更新
-
-海克斯 / 英雄映射等可在应用内点 **「📦 数据更新」**；符文库 `data/aram_runes.json` 可用：
-
-```bash
-# 需本机有 u.gg-aram 提取包，或由 CI 脚本拉取依赖后：
-python scripts/build_aram_runes.py
-```
-
-也可在 GitHub Actions 手动 / 定时跑 **Update ARAM Runes**（`.github/workflows/update-aram-runes.yml`，每周一 03:00 UTC）。
-
-## 以后怎么更新
-
-| 动作 | 做法 |
-|------|------|
-| 日常代码 | push 到 `main`（私有仓库保持 private） |
-| Windows 安装包 | 打 `v*` tag → **Build Windows** 发 Release；或 Actions 里手动 Run workflow 下 Artifacts |
-| 符文库 | 应用内「数据更新」；或 `python scripts/build_aram_runes.py`；或每周 **Update ARAM Runes** Action |
-| 海克斯胜率等 | GUI「数据更新」全量/增量/GitHub 下载 |
-
----
-
-## 💛 打赏支持
-
-若本工具对你有帮助，可点 GUI 右上角 **「💛 打赏」** 或主按钮下方金色条 **「💛 打赏支持 · 扫码自愿」**，扫码支持（纯属自愿）。图片：`assets/donate.jpg`（打包随 `assets/` 打入）。
-
-## 📄 License 与致谢
-
-MIT License（**nho有手就行** / `lixyd/nho-ysjxing`）。
-
-符文推荐来自对局统计数据集，并经 Riot Data Dragon 最新 perk ID 校验 / 映射；欢迎 PR 完善 `data/aram_runes.json`。
+打赏：GUI「💛 打赏」扫 `assets/donate.jpg`。MIT · `lixyd/nho-ysjxing`。
