@@ -1,0 +1,16 @@
+{
+  "note": "本模式海克斯池的稀有度分布（来自 LCU cherry-augments.json 的 rarity 字段）",
+  "modeName": "KIWI,KIWI_JADE",
+  "dist": {
+    "白银": 67,
+    "黄金": 95,
+    "棱彩": 85
+  },
+  "rarityZhMap": {
+    "kSilver": "白银",
+    "kGold": "黄金",
+    "kPrismatic": "棱彩",
+    "kEventChoice": "事件抉择",
+    "kUnknown": ""
+  }
+}

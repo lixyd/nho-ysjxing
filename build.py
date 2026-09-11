@@ -97,6 +97,8 @@ def build():
         "--hidden-import", "thefuzz",
         "--hidden-import", "rapidfuzz",
         "--hidden-import", "onnxruntime",
+        # 进程降优先级（让 CPU 优先给游戏）用到的 psutil
+        "--hidden-import", "psutil",
         "--hidden-import", "scripts",
         "--hidden-import", "scripts.lcu_connector",
         "--hidden-import", "scripts.hero_scraper",
@@ -106,6 +108,12 @@ def build():
         "--hidden-import", "scripts.runes",
         "--hidden-import", "scripts.auto_hex",
         "--hidden-import", "scripts.config",
+        # 流派识别（main.py 顶部静态 import，PyInstaller 通常能识别；显式声明保险）
+        "--hidden-import", "scripts.style_detect",
+        # 热门玩法路线 + 赌狗玩法提示（data/combo_recipes.json）
+        "--hidden-import", "scripts.combo_recipes",
+        # 官方海克斯库：updater 里是函数内动态 import，静态分析可能漏掉
+        "--hidden-import", "scripts.build_augments_official",
 
         ENTRY_POINT,
     ]

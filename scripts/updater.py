@@ -7,12 +7,13 @@ import requests
 import sys
 import re
 import random
+import time
 from pypinyin import lazy_pinyin 
 
 # 1. 解决同级导入问题 (兼容直接运行和包导入)
 try:
     from scripts import hero_scraper as crawler
-    from scripts.config import DATA_DIR, CHAMPION_ID_FILE, PINYIN_FILE, CSV_FILE
+    from scripts.config import DATA_DIR, CHAMPION_ID_FILE, PINYIN_FILE, CSV_FILE, AUGMENTS_FILE, AUGMENT_ALIAS_FILE
 except ImportError:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
@@ -21,7 +22,7 @@ except ImportError:
     if current_dir not in sys.path:
         sys.path.insert(0, current_dir)
     import hero_scraper as crawler
-    from config import DATA_DIR, CHAMPION_ID_FILE, PINYIN_FILE, CSV_FILE
+    from config import DATA_DIR, CHAMPION_ID_FILE, PINYIN_FILE, CSV_FILE, AUGMENTS_FILE, AUGMENT_ALIAS_FILE
 
 # GitHub 仓库地址 (用于在线下载)
 GITHUB_RAW_BASE  = "https://raw.githubusercontent.com/lixyd/nho-ysjxing/main"
@@ -381,6 +382,8 @@ def download_from_github(log_func=None):
         ("data/hero_augments.csv", CSV_FILE, "英雄海克斯数据"),
         ("data/champions.json", CHAMPION_ID_FILE, "英雄名称映射"),
         ("data/pinyin_map.json", PINYIN_FILE, "拼音检索索引"),
+        ("data/augments_official.json", AUGMENTS_FILE, "官方海克斯数据库"),
+        ("data/augment_alias_zh.json", AUGMENT_ALIAS_FILE, "海克斯中文别名索引"),
     ]
     
     success_count = 0
@@ -480,6 +483,125 @@ def update_specific_heroes(hero_names, log_func=None):
         
     except Exception as e:
         _log(f"❌ 更新失败: {e}")
+        return False
+
+
+# ================= 官方海克斯库：定时自检更新 =================
+
+AUGMENT_SYNC_STATE = os.path.join(DATA_DIR, "augments_sync_state.json")
+
+
+def _read_sync_state():
+    try:
+        with open(AUGMENT_SYNC_STATE, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _write_sync_state(state):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(AUGMENT_SYNC_STATE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"自检状态写入失败: {e}")
+        return False
+
+
+def _local_augment_meta():
+    try:
+        with open(AUGMENTS_FILE, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        return db, os.path.getmtime(AUGMENTS_FILE)
+    except Exception:
+        return None, 0
+
+
+def _rebuild_alias_index(db):
+    """本地重建中文别名索引，省一次网络请求。"""
+    try:
+        from scripts.build_augments_official import write_alias_index
+    except ImportError:
+        try:
+            from build_augments_official import write_alias_index
+        except ImportError:
+            return None
+    try:
+        return write_alias_index(db, DATA_DIR)
+    except Exception as e:
+        print(f"别名索引重建失败: {e}")
+        return None
+
+
+def auto_check_official_augments(log_func=None, interval_days=3, force=False):
+    """定时自检官方海克斯数据库，有更新则静默覆盖本地。
+
+    **直连 CommunityDragon，不依赖任何自建仓库**：
+    只拉 `augment-lists.json` + `cherry-augments.json` 两个小文件（合计约 140KB），
+    在本地重建「识别层」，几秒完成。已有的中文描述会按 apiName 原样保留。
+
+    - 只维护 augments_official.json / augment_alias_zh.json 这一族文件，
+      完全不触碰 op.gg 爬虫流程与 hero_augments.csv。
+    - 任何异常都吞掉并返回 False，绝不阻塞启动或影响对局。
+    - 用 augments_sync_state.json 记录上次检查时间，默认 3 天才查一次。
+
+    Args:
+        log_func: 日志回调 log_func(str)
+        interval_days: 最小检查间隔（天）
+        force: 忽略间隔，强制检查
+
+    Returns:
+        bool: 是否实际更新了本地数据
+    """
+    _log = log_func or print
+    state = _read_sync_state()
+
+    if not force:
+        last = state.get("last_check", 0)
+        if time.time() - last < interval_days * 86400:
+            return False
+
+    try:
+        from scripts.build_augments_official import (
+            build_minimal, pool_signature, write_alias_index,
+        )
+    except ImportError:
+        from build_augments_official import (
+            build_minimal, pool_signature, write_alias_index,
+        )
+
+    try:
+        _log("🔎 正在自检官方海克斯库（CommunityDragon）…")
+        fresh = build_minimal(cache=os.path.join(os.path.dirname(DATA_DIR), "_augdata"),
+                              preserve_path=AUGMENTS_FILE)
+
+        old, _ = _local_augment_meta()
+        same = bool(old) and pool_signature(old) == pool_signature(fresh)
+
+        state["last_check"] = time.time()
+        if same:
+            _write_sync_state(state)
+            _log(f"✅ 官方海克斯库已是最新（{fresh['counts']['aramPool']} 个海克斯）")
+            return False
+
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(AUGMENTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(fresh, f, ensure_ascii=False, indent=2)
+        write_alias_index(fresh, DATA_DIR)
+
+        state["last_update"] = time.time()
+        state["patch"] = fresh.get("patch")
+        state["aramPool"] = fresh["counts"]["aramPool"]
+        state["sig"] = pool_signature(fresh)
+        _write_sync_state(state)
+        _log(f"⬆ 官方海克斯库已更新 → {fresh.get('patch')}"
+             f"（{fresh['counts']['aramPool']} 个海克斯）")
+        return True
+
+    except Exception as e:
+        _log(f"⚠ 官方库自检失败（忽略，不影响使用）: {e}")
         return False
 
 

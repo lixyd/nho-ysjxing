@@ -1,0 +1,75 @@
+{
+  "schema": "aramhelper.combo_recipes/v2",
+  "updated": "2026-09-11",
+  "source": "社区攻略整理（万剑归宗=暴击飞弹+易损，来自NGA/B站/18183攻略；赌狗玩法=随机结果类海克斯）",
+  "note": "两个独立概念：routes=热门玩法路线（core=核心海克斯看到必拿，linked=同方向联动）；gambleAugments=随机结果类海克斯（选下去不知道变成什么，纯赌）。apiName 必须与 augments_official.json 一致，用户可自行增删。",
+  "routes": [
+    {
+      "id": "wanjian_guizong",
+      "title": "万剑归宗（暴击飞弹流）",
+      "tagline": "满屏魔法弹幕，一发平A蒸发脆皮",
+      "core": [
+        {"apiName": "ARAM_Vulnerability", "nameZh": "易损"},
+        {"apiName": "CriticalMissile", "nameZh": "暴击飞弹"}
+      ],
+      "linked": [
+        {"apiName": "ARAM_FanTheHammer", "nameZh": "连拨击锤"},
+        {"apiName": "ARAM_Typhoon", "nameZh": "台风"},
+        {"apiName": "ARAM_LightemUp", "nameZh": "点亮他们！"},
+        {"apiName": "ARAM_MagicMissile", "nameZh": "魔法飞弹"},
+        {"apiName": "Twinfire", "nameZh": "双生火焰"},
+        {"apiName": "ARAM_DualWield", "nameZh": "双刀流"},
+        {"apiName": "ARAM_DoubleTap", "nameZh": "双发快射"},
+        {"apiName": "ARAM_JeweledGauntlet", "nameZh": "珠光护手"},
+        {"apiName": "ARAM_EtherealWeapon", "nameZh": "虚幻武器"},
+        {"apiName": "ARAM_Multishot", "nameZh": "多重射击"},
+        {"apiName": "SpellVolley", "nameZh": "三重射击"},
+        {"apiName": "ARAM_CriticalHealing", "nameZh": "会心治疗"},
+        {"apiName": "ARAM_TankItOrLeaveIt", "nameZh": "会心防御"}
+      ],
+      "hintCore": "⚔ 热门玩法【万剑归宗】：{hit}是核心，看到必拿！AD走电刃+飓风特效流 / AP走火炬面具灼烧流",
+      "hintLinked": "⚔ 万剑归宗方向：{hit}配合暴击飞弹/易损可出满屏飞弹",
+      "tips": "易损+暴击飞弹双海克斯自带50%暴击率；AD：电刃→飓风→界弓→智慧末刃→羊刀→破败；AP：火炬→面具→命定灰烬→毁坏仪式→收集者→影焰"
+    },
+    {
+      "id": "infinite_skills",
+      "title": "无限技能流（大法师+纯粹主义者）",
+      "tagline": "技能CD疯狂缩减，无限甩技能",
+      "core": [
+        {"apiName": "ARAM_Archmage", "nameZh": "大法师"},
+        {"apiName": "ARAM_Purist_Caster", "nameZh": "纯粹主义者-术师"}
+      ],
+      "linked": [],
+      "hintCore": "⚔ 热门玩法【无限技能流】：{hit}+另一个CD海克斯=技能无限转，法师直接起飞",
+      "hintLinked": "",
+      "tips": "大法师施法返还随机技能CD，纯粹主义者大幅缩减基础技能CD，叠加接近无限技能"
+    },
+    {
+      "id": "infernal_conduit",
+      "title": "炼狱导管流（火男最佳）",
+      "tagline": "技能点燃敌人，灼烧伤害爆炸",
+      "core": [
+        {"apiName": "ARAM_InfernalConduit", "nameZh": "炼狱导管"}
+      ],
+      "linked": [],
+      "hintCore": "⚔ 热门玩法【炼狱导管流】：{hit}配持续伤害英雄（火男/莉莉娅）伤害爆炸",
+      "hintLinked": "",
+      "tips": "炼狱导管让技能附带灼烧，最适合自带持续伤害的英雄：复仇焰魂、莉莉娅"
+    }
+  ],
+  "gambleAugments": [
+    {"apiName": "ARAM_TransmutePrismatic", "nameZh": "质变：棱彩阶", "desc": "随机获得1个棱彩阶海克斯"},
+    {"apiName": "TransmutePrismatic", "nameZh": "质变：棱彩阶", "desc": "随机获得1个棱彩阶海克斯"},
+    {"apiName": "ARAM_TransmuteGold", "nameZh": "质变：黄金阶", "desc": "随机获得1个黄金阶海克斯"},
+    {"apiName": "TransmuteGold", "nameZh": "质变：黄金阶", "desc": "随机获得1个黄金阶海克斯"},
+    {"apiName": "TransmuteSilver", "nameZh": "质变：白银阶", "desc": "随机获得1个白银阶海克斯"},
+    {"apiName": "ARAM_TransmuteChaos", "nameZh": "质变：混沌", "desc": "随机获得若干个海克斯"},
+    {"apiName": "TransmuteChaos", "nameZh": "质变：混沌", "desc": "随机获得若干个海克斯"},
+    {"apiName": "ARAM_PandorasBox", "nameZh": "潘朵拉的盒子", "desc": "所有海克斯变为随机棱彩阶"},
+    {"apiName": "PandorasBox", "nameZh": "潘朵拉的盒子", "desc": "所有海克斯变为随机棱彩阶"},
+    {"apiName": "ARAM_OmniSoul", "nameZh": "全能龙魂", "desc": "获得随机龙魂"},
+    {"apiName": "OmniSoul", "nameZh": "全能龙魂", "desc": "获得随机龙魂"},
+    {"apiName": "KingMe", "nameZh": "尊我为王", "desc": "完成任务获得随机棱彩阶海克斯"}
+  ],
+  "gambleHint": "🎲 赌狗玩法：「{names}」开出来是随机的，不知道会变成什么——敢不敢直接拿？"
+}

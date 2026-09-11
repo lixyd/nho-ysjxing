@@ -56,6 +56,7 @@ class AutoHexWatcher:
         on_results: Callable[[dict], None],
         on_status: Optional[Callable[[str], None]] = None,
         on_refresh_reminder: Optional[Callable[[], None]] = None,
+        on_invalidate: Optional[Callable[[], None]] = None,
         checkpoints=None,
         enabled: bool = True,
     ):
@@ -65,6 +66,8 @@ class AutoHexWatcher:
         self.on_results = on_results
         self.on_status = on_status
         self.on_refresh_reminder = on_refresh_reminder
+        # 选项变化时立刻回调：让界面把旧推荐清掉，别让上一轮的名字挂在新牌上
+        self.on_invalidate = on_invalidate
         self.checkpoints = tuple(checkpoints or HEX_LEVEL_CHECKPOINTS)
         self.enabled = enabled
 
@@ -87,6 +90,13 @@ class AutoHexWatcher:
         self._ui_was_visible = False
         # 本轮选牌已出过有效推荐；UI 消失后结算欠账 / 结束持续刷新
         self._pick_cycle_active = False
+        # 未匹配抑制：识别到文字但未命中数据库时，死亡持续期间不反复自动重试
+        self._suppress_retry = False
+        # OCR 快照/轻量探测 整帧变化缓存
+        self._snap_cache_key = None
+        self._snap_cache = None
+        self._quick_cache_key = None
+        self._quick_cache = None
 
     def set_enabled(self, value: bool):
         self.enabled = bool(value)
@@ -107,6 +117,11 @@ class AutoHexWatcher:
         self._option_change_since = None
         self._ui_was_visible = False
         self._pick_cycle_active = False
+        self._suppress_retry = False
+        self._snap_cache_key = None
+        self._snap_cache = None
+        self._quick_cache_key = None
+        self._quick_cache = None
 
     def _status(self, msg: str):
         print(msg)
@@ -115,6 +130,15 @@ class AutoHexWatcher:
                 self.on_status(msg)
             except Exception:
                 pass
+
+    def _notify_invalidate(self):
+        """告知界面：当前推荐已失效，请先清掉（避免显示上一轮的名字）。"""
+        if not self.on_invalidate:
+            return
+        try:
+            self.on_invalidate()
+        except Exception:
+            pass
 
     def _emit_reminder(self):
         if self.on_refresh_reminder:
@@ -218,9 +242,11 @@ class AutoHexWatcher:
         if death_edge:
             self._death_cycle_fired = False
             self._pick_cycle_active = False
+            self._suppress_retry = False  # 新一轮死亡可重新尝试识别
+            # 双条件：仅当已到达等级检查点(有欠账)且死亡/泉水时才自动识别；
+            # 未到新检查点不自动触发（仍可手动「刷新识别」）
             if not self._redeem_owed_if_ready(is_dead=True, ui_visible=False, source="死亡/泉水"):
-                self._status("💀 检测到死亡/回泉水窗口，准备自动识别海克斯…")
-                self._queue_reason("death")
+                self._status("💤 已死亡/回泉水，但未到达新的等级检查点 — 不自动识别（可手动「刷新识别」）")
         elif not is_dead and self._was_dead:
             self._death_cycle_fired = False
         self._was_dead = is_dead
@@ -275,25 +301,26 @@ class AutoHexWatcher:
         # UI 出现：兑现欠账；无欠账则普通 UI 触发
         if ui_visible and not self._ui_was_visible:
             if self._owed:
+                self._suppress_retry = False  # 选牌 UI 重新出现，允许再次识别
                 self._redeem_owed_if_ready(
                     is_dead=is_dead, ui_visible=True, source="选牌 UI"
                 )
             elif self._pending_reason is None:
-                self._queue_reason("ui")
-                self._status("🧿 检测到海克斯选牌 UI，准备自动识别…")
+                self._status("🧿 检测到海克斯选牌 UI，但未到等级检查点 — 不自动识别（可手动「刷新识别」）")
         self._ui_was_visible = ui_visible
 
         if ui_visible and snapshot:
             if self._last_option_snapshot is None:
-                if self._pending_reason is None and not self._owed:
-                    self._queue_reason("ui")
-                elif self._owed and self._pending_reason is None:
+                if self._owed and self._pending_reason is None:
                     self._redeem_owed_if_ready(
                         is_dead=is_dead, ui_visible=True, source="选牌 UI"
                     )
             elif snapshot != self._last_option_snapshot:
                 if self._option_change_since is None:
                     self._option_change_since = now
+                    # 立刻清掉旧推荐：旧行为要等 debounce 才重识别，
+                    # 这段时间遮罩上挂着的是上一轮的名字，看起来像"认错了"。
+                    self._notify_invalidate()
                     self._status("🔄 海克斯选项已变化，即将更新推荐…")
                 elif now - self._option_change_since >= OPTION_CHANGE_DEBOUNCE:
                     self._queue_reason("option_change")
@@ -307,21 +334,22 @@ class AutoHexWatcher:
                 self._option_change_since = None
                 self._settle_pick_cycle_on_ui_gone()
 
-        # 欠账且本帧已能选牌，但尚未挂 pending：补一次兑现
-        if self._owed and (is_dead or ui_visible) and self._pending_reason is None:
+        # 欠账且本帧已能选牌，但尚未挂 pending：补一次兑现（未匹配抑制期内不重复）
+        if self._owed and (is_dead or ui_visible) and self._pending_reason is None and not self._suppress_retry:
             self._redeem_owed_if_ready(
                 is_dead=is_dead,
                 ui_visible=ui_visible,
                 source="死亡/泉水" if is_dead else "选牌 UI",
             )
 
-        # 选牌 UI 仍在且无其它待办时，保持持续刷新（直到玩家选定）
-        if ui_visible and self._pending_reason is None and (
-            self._pick_cycle_active or self._pending_cp is not None
+        # 选牌 UI 仍在且已出过推荐/正在兑现时，保持持续刷新（直到玩家选定）；
+        # 未到等级检查点(无欠账)的裸选牌 UI 不再自动持续刷新
+        if (
+            ui_visible
+            and self._pending_reason is None
+            and not self._suppress_retry
+            and (self._pick_cycle_active or self._pending_cp is not None)
         ):
-            self._queue_reason("ui_keep")
-        elif ui_visible and self._pending_reason is None and not self._owed:
-            # 无欠账的独立选牌 UI：同样持续刷新直至选定
             self._queue_reason("ui_keep")
 
         # ---- 执行排队的分析 ----
@@ -442,13 +470,13 @@ class AutoHexWatcher:
             else:
                 self._retry_after = now + 1.0
         else:
-            self.on_results(results or {})
-            if remind:
-                self._emit_reminder()
-            if reason == "death":
-                self._death_cycle_fired = True
-            self._pick_cycle_active = True
-            self._continue_or_stop_refresh(post_ui=bool(post_ui), now=now)
+            # 有文字但未匹配：不向界面推送「未识别」卡片刷屏，仅日志提示一次；
+            # 停止持续刷新并抑制重试，避免死亡持续期间反复空转
+            self._suppress_retry = True
+            if reason != "ui_keep":
+                self._status("🔍 识别到海克斯文字但未匹配数据库 — 未出推荐（可点「刷新识别」重试）")
+            self._pick_cycle_active = False
+            self._continue_or_stop_refresh(post_ui=False, now=now)
 
     def _continue_or_stop_refresh(self, *, post_ui: bool, now: float):
         """选牌 UI 仍在则排队持续刷新；UI 消失则停止该轮高频识别。"""
@@ -478,14 +506,30 @@ class AutoHexWatcher:
         """检查点选完后 idle 到下一检查点（死亡/刷新仍可触发）。"""
         self._idle_until_next = True
 
-    def notify_manual_refresh(self, results: Optional[dict] = None):
-        """手动刷新后：更新 OCR 快照基线，并提示「刷新后已更新推荐」。"""
+    def notify_manual_refresh(self, results: Optional[dict] = None, *, skip_snapshot: bool = False):
+        """手动刷新后：更新 OCR 快照基线，并提示「刷新后已更新推荐」。
+
+        skip_snapshot=True 时（GUI「刷新识别」路径），调用方刚执行完 analyze(含 3 区 OCR)，
+        直接依据 results 判断 UI 是否仍在，避免再同步 OCR 一次造成明显卡顿。
+        """
         if not self._gate_in_live_game():
             self._status("⚠ 尚未进入对局 — 进入对局且右上角读秒出现后再识别海克斯")
             return
-        snap, ui = self._snapshot_options()
-        if ui and snap:
-            self._last_option_snapshot = snap
+        self._suppress_retry = False  # 手动刷新视为用户主动重试
+        if skip_snapshot:
+            # 复用 analyze 结果推断 UI 状态: 有文字(含未匹配) 即视为选牌 UI 仍在
+            ui = False
+            if results:
+                ui = any(
+                    (not v.get("error"))
+                    or ("无文字" not in str(v.get("text", "")))
+                    for v in results.values()
+                )
+            snap = self._last_option_snapshot
+        else:
+            snap, ui = self._snapshot_options()
+            if ui and snap:
+                self._last_option_snapshot = snap
         self._option_change_since = None
         self._pending_reason = None
         has_signal = False
@@ -520,12 +564,27 @@ class AutoHexWatcher:
             self._settle_pick_cycle_on_ui_gone()
             self._arm_idle_watch()
 
-    def _snapshot_options(self) -> Tuple[Optional[str], bool]:
-        """对三个 hex 区域 OCR，返回 (规范化拼接快照, UI是否可见)。"""
+    def _snapshot_options(self, use_cache: bool = True) -> Tuple[Optional[str], bool]:
+        """对三个 hex 区域 OCR，返回 (规范化拼接快照, UI是否可见)。
+
+        use_cache=True 时先做整帧字节级变化检测：三区域画面与上次完全一致则直接复用
+        上次 OCR 结果，避免选牌 UI 静止期间反复跑全量 OCR(每次 ~0.9s) 拖慢主循环。
+        画面任何像素变化(刷新/高亮/选中)都会触发真实 OCR，不会漏检。
+        """
         try:
             images = self.analyzer.capture_all_regions()
             if not images:
                 return None, False
+            if use_cache:
+                cache_key = tuple(
+                    (img.shape, img.dtype, img.tobytes()) for img in images.values()
+                )
+                if (
+                    getattr(self, "_snap_cache_key", None) is not None
+                    and cache_key == self._snap_cache_key
+                    and getattr(self, "_snap_cache", None) is not None
+                ):
+                    return self._snap_cache
             parts: Dict[str, str] = {}
             for key in sorted(images.keys()):
                 img = images[key]
@@ -538,24 +597,29 @@ class AutoHexWatcher:
                 texts = [parts[k] for k in sorted(parts.keys())]
             nonempty = [t for t in texts if len(t) >= 2]
             if not nonempty:
+                if use_cache:
+                    self._snap_cache_key = cache_key
+                    self._snap_cache = (None, False)
                 return None, False
             snap = "|".join(t if t else "_" for t in texts)
-            return snap, True
+            result = (snap, True)
+            if use_cache:
+                self._snap_cache_key = cache_key
+                self._snap_cache = result
+            return result
         except Exception:
             return None, False
 
     def _detect_hex_ui_quick(self) -> bool:
-        """轻量探测（仅中间区）。"""
+        """轻量探测：抓中间区 → 像素预筛（几乎免费）→ 通过才 OCR。
+
+        以前这里**每个 tick（0.55s）都跑一次单区 OCR，整局不停**，
+        而缓存键是原始像素 —— 对局里画面一直在动，永远不命中，
+        等于整场比赛持续 1.8 次/秒的 ONNX 推理。这是游戏内卡顿的主因。
+        现在交给 analyzer.probe_ui()：正常对局中像素预筛会拦掉绝大多数帧，OCR 基本不跑。
+        """
         try:
-            images = self.analyzer.capture_all_regions()
-            if not images:
-                return False
-            key = "hex_2" if "hex_2" in images else next(iter(images))
-            img = images[key]
-            res_ocr, _ = self.analyzer.ocr(img)
-            txt = "".join([line[1] for line in res_ocr]) if res_ocr else ""
-            txt = txt.replace(" ", "").strip()
-            return len(txt) >= 2
+            return self.analyzer.probe_ui()
         except Exception:
             return False
 

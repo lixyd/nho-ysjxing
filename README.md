@@ -3,7 +3,7 @@
 
 ### 游戏内效果
 
-![海克斯推荐叠层](docs/demo_ingame_hex.jpg)
+![海克斯推荐叠层](docs/demo_ingame_hex.png)
 
 ## 下载安装包
 
@@ -33,7 +33,7 @@
 **不做**：游戏进程注入、内存读写、自动点击游戏窗口。海克斯仅遮罩推荐；符文可通过官方 LCU `lol-perks` 套用。
 
  <p align="center">
-      <img src="./docs/demo.png" width="800" alt="游戏内演示效果">
+      <img src="./docs/demo_ingame_hex.png" width="800" alt="游戏内演示效果">
       <br>
       <em>图：海克斯识别与颜色提示效果展示（游戏内）</em>
     </p>
@@ -45,10 +45,55 @@
 | 符文 / 英雄 **ID、名称** | Riot 官方 [Data Dragon](https://ddragon.leagueoflegends.com/) / [Community Dragon](https://www.communitydragon.org/)（联盟静态数据） |
 | 大乱斗 **推荐组合统计**（胜率/选用） | **官网不提供**胜率推荐；当前来自对局统计数据集（`@champ-r/u.gg-aram` 等），并已用官网最新 perk ID（Data Dragon `runesReforged`）校验 / 映射 |
 | 海克斯胜率 | [OP.GG ARAM Mayhem](https://op.gg/zh-cn/lol/modes/aram-mayhem) 抓取快照 |
+| **海克斯「是什么」（识别层）** | Riot 官方 LCU 游戏数据，经 Community Dragon 镜像直读，**不爬虫**（见下节） |
 
 本工具仅供学习交流使用。
 
 当前符文库 `_meta.ddragonVersion` 见 `data/aram_runes.json`（构建时拉取最新 Data Dragon 版本）。
+
+---
+
+## 🧩 海克斯识别层（官方数据，不爬虫）
+
+插件里有**两张表、两件事**，别混起来：
+
+| | 文件 | 回答的问题 | 来源 |
+|---|---|---|---|
+| **识别层** | `data/augments_official.json` | 这到底是不是一个合法海克斯？叫什么？什么稀有度？ | Riot 官方 LCU 数据（Community Dragon 镜像） |
+| **排名层** | `data/hero_augments.csv` | 这个英雄身上它排第几？ | OP.GG 抓取快照 |
+
+OCR 识别时**先认、再排**：官方库认出来了但本英雄没排名，会显示「官方池内 · 本英雄暂无排名」，
+而不是退化成「未识别」。官方池不含 `？？？` 这类占位名（Riot 自己的残留名会被过滤掉）。
+
+### 数据源
+
+| 文件 | 路径 | 作用 |
+|---|---|---|
+| `augment-lists.json` | `plugins/rcp-be-lol-game-data/global/<locale>/v1/` | 按 `modeName` 分池 |
+| `cherry-augments.json` | 同上 | 官方总表：本地化名称 + 稀有度 + 图标 |
+| `kiwi.bin.json` | `game/maps/modespecificdata/` | 描述文本 / platformId |
+| `lol.stringtable.json` | `game/<locale>/data/menu/en_us/` | 字符串表（**键大小写不敏感**） |
+
+### 两个必须记住的坑
+
+1. **国服要取并集**：ARAM 海克斯大乱斗的客户端代号是 `kiwi`，国服是 `kiwi_jade` 变体。
+   池子必须取 `KIWI ∪ KIWI_JADE = 247` 个（专属 142 / 共用 105）；
+   只取 `KIWI`(223) 会漏 24 个。
+2. **`modeName` 要核对**：`CHERRY` 是竞技场，不要拿它当 ARAM 数据源。
+
+### 构建与维护
+
+```bash
+python scripts/build_augments_official.py          # 完整构建（含中文描述）
+python scripts/build_augments_official.py --mode KIWI,KIWI_JADE
+python scripts/reconcile_augments.py               # 与 hero_augments.csv 对账
+python scripts/repair_hero_augments.py --apply      # 清理 CSV 占位行（自动备份）
+python scripts/verify_augment_coverage.py           # 覆盖率回归测试
+```
+
+自检：程序启动后会后台静默检查一次（默认 3 天一次），**直连 Community Dragon**
+只拉两个小文件（约 140KB）重建识别层，不依赖本仓库的 GitHub 发布。
+指纹一致就不覆盖，已抓好的中文描述会被保留。
 
 ---
 

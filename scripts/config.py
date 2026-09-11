@@ -18,10 +18,36 @@ def get_base_dir():
 BASE_DIR = get_base_dir()
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
+
+def lower_process_priority():
+    """把本进程降到"低于正常"优先级，让游戏本体优先拿 CPU。
+
+    这是消除游戏内卡顿最直接的一招：OCR 再省也还是会占用 CPU，
+    只要让操作系统在争抢时优先满足游戏，卡顿感就基本消失。
+    失败时静默返回（例如权限不足），不影响任何功能。
+    """
+    try:
+        import psutil
+        p = psutil.Process()
+        p.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+        try:
+            # 同时也降低 IO 优先级，避免截图读写抢磁盘
+            p.ionice(psutil.IOPRIO_CLASS_BE, 5)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"⚠ 进程降优先级失败（不影响功能）: {e}")
+        return False
+
 # 数据文件路径常量
 CHAMPION_ID_FILE = os.path.join(DATA_DIR, "champions.json")
 PINYIN_FILE      = os.path.join(DATA_DIR, "pinyin_map.json")
 CSV_FILE         = os.path.join(DATA_DIR, "hero_augments.csv")
+
+# 官方海克斯数据库（由 scripts/build_augments_official.py 生成，CommunityDragon 官方数据）
+AUGMENTS_FILE    = os.path.join(DATA_DIR, "augments_official.json")
+AUGMENT_ALIAS_FILE = os.path.join(DATA_DIR, "augment_alias_zh.json")
 
 # 扩展功能数据
 SETTINGS_FILE   = os.path.join(DATA_DIR, "settings.json")
@@ -41,6 +67,8 @@ DEFAULT_SETTINGS = {
     "auto_apply_runes": False,
     "overlay_topmost": True,
     "auto_accept_delay": 5,
+    # WeGame 启动器：用户手动指定或自动探测到的 wegame.exe 路径（字符串，可为空）
+    "wegame_path": "",
 }
 
 
@@ -71,6 +99,8 @@ def load_settings(path=None):
                     raw = loaded[key]
                     if key == "auto_accept_delay":
                         data[key] = normalize_delay(raw, default=default)
+                    elif key == "wegame_path":
+                        data[key] = str(raw) if raw else ""
                     else:
                         data[key] = bool(raw)
     except Exception as e:
@@ -89,6 +119,8 @@ def save_settings(settings, path=None):
                     continue
                 if key == "auto_accept_delay":
                     payload[key] = normalize_delay(settings[key], default=default)
+                elif key == "wegame_path":
+                    payload[key] = str(settings[key]) if settings[key] else ""
                 else:
                     payload[key] = bool(settings[key])
         os.makedirs(os.path.dirname(path), exist_ok=True)

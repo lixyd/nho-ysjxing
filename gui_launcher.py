@@ -3,7 +3,7 @@ nho有手就行 - GUI 启动器
 独立 EXE 入口点，提供图形化界面与系统托盘支持
 """
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 import threading
 import queue
 import os
@@ -13,6 +13,13 @@ import time
 import datetime
 import math
 import traceback
+import subprocess
+
+# WeGame 注册表探测（Windows）；非 Windows 环境置空
+try:
+    import winreg
+except ImportError:
+    winreg = None
 
 # ============ 路径初始化 (兼容 PyInstaller 打包) ============
 
@@ -37,21 +44,32 @@ from scripts.auto_hex import AutoHexWatcher
 # ============ 统一配色方案 ============
 
 class Theme:
-    """LoL 深色主题: 海军黑底 + 金色点缀"""
-    BG          = "#0a0e17"
-    BG_CARD     = "#121a27"
-    BG_INPUT    = "#0a0e17"
-    BG_SEG      = "#1a2436"
-    ACCENT      = "#c8aa6e"
-    ACCENT_HVR  = "#f0e6d2"
-    ACCENT_DIM  = "#785a28"
-    SUCCESS     = "#0acbe6"
-    WARNING     = "#c8aa6e"
-    ERROR       = "#e84057"
-    TEXT        = "#f0e6d2"
-    TEXT_DIM    = "#a09b8c"
-    BORDER      = "#1e2a3a"
-    GOLD_GLOW   = "#c89b3c"
+    """Apple 风格色板：浅灰底 + 白卡片 + 苹果蓝点缀。
+
+    对应 Apple HIG：背景 #F5F5F7、分隔 #D2D2D7、正文 #1D1D1F、
+    次要 #86868B、强调蓝 #0071E3、成功绿 #34C759、警示橙 #FF9500、错误红 #FF3B30。
+    """
+    MINT        = "#34C759"   # 成功绿（保留属性名，值换苹果绿）
+    MINT_D      = "#1D1D1F"   # 标题黑
+    SKY         = "#0071E3"   # 苹果蓝
+    SKY_D       = "#0071E3"
+    VIOLET      = "#5E5CE6"   # 靛蓝
+    VIOLET_D    = "#5E5CE6"
+
+    BG          = "#F5F5F7"   # Apple 浅灰底
+    BG_CARD     = "#FFFFFF"   # 白卡片
+    BG_INPUT    = "#FFFFFF"
+    BG_SEG      = "#E8E8ED"   # 分段控件底
+    ACCENT      = "#0071E3"   # 苹果蓝（主按钮）
+    ACCENT_HVR  = "#0077ED"
+    ACCENT_DIM  = "#D2D2D7"   # 分隔线
+    SUCCESS     = "#34C759"
+    WARNING     = "#FF9500"
+    ERROR       = "#FF3B30"
+    TEXT        = "#1D1D1F"
+    TEXT_DIM    = "#86868B"
+    BORDER      = "#D2D2D7"
+    GOLD_GLOW   = "#0071E3"   # 打赏键同主色（苹果风不搞花哨金色）
 
 
 # ================= 日志重定向 =================
@@ -131,6 +149,7 @@ class GUIController(threading.Thread):
             on_results=self._on_hex_results,
             on_status=lambda m: self.gui_queue.put({"event": "log", "text": m}),
             on_refresh_reminder=self._on_hex_refresh_reminder,
+            on_invalidate=self._on_hex_invalidate,
             enabled=self.settings.get("auto_hex", True),
         )
 
@@ -168,10 +187,51 @@ class GUIController(threading.Thread):
     def _on_hex_results(self, results):
         self.overlay_queue.put({"cmd": "UPDATE", "data": results})
         self._gui(event="status", status="analyzed", hero=self.current_hero)
+        self._gui(event="hex_results", data=self._format_hex_results(results))
+
+    def _format_hex_results(self, results):
+        """把海克斯识别结果格式化为主界面卡片文本（仅显示有效识别项）。"""
+        if not results:
+            return ""
+        lines = []
+        for key in ("hex_1", "hex_2", "hex_3"):
+            v = results.get(key)
+            if not v:
+                continue
+            if v.get("valid"):
+                text = str(v.get("text", "")).replace("\n", " ").strip()
+                rank = v.get("overall_rank") or v.get("t_rank")
+                best = v.get("highlight")
+                seg = f"● {text}"
+                if rank:
+                    seg += f"  (总No.{rank})"
+                if best:
+                    seg += "  ⭐推荐"
+                lines.append(seg)
+            elif v.get("error"):
+                lines.append("○ 未识别")
+        # 玩法提示：赌狗玩法（随机海克斯）> 热门路线（万剑归宗等）> 流派
+        for skey in ("_gamble", "_route", "_combo"):
+            info = results.get(skey)
+            if info and info.get("text"):
+                lines.append("")
+                lines.append(str(info["text"]))
+        return "\n".join(lines) if lines else ""
 
     def _on_hex_refresh_reminder(self):
         """选项刷新 / 手动「刷新识别」后的 UI 提醒。"""
         self._gui(event="hex_refresh_reminder")
+
+    def _on_hex_invalidate(self):
+        """选项已变化：立刻把遮罩上的旧推荐换成「识别中…」。
+
+        不做这一步的话，从"检测到变化"到"重新识别完成"之间那段时间，
+        遮罩上挂着的是**上一轮的名字** —— 看起来就像插件认错了牌。
+        """
+        try:
+            self.overlay_queue.put({"cmd": "PENDING"})
+        except Exception:
+            pass
 
     def _is_hex_ocr_allowed(self) -> bool:
         """海克斯 OCR 硬门禁：InProgress + Live Client 真实玩家数据。"""
@@ -213,6 +273,7 @@ class GUIController(threading.Thread):
             self.overlay_queue.put({"cmd": "ITEM_STRIP", "data": ""})
         except Exception:
             pass
+        self._gui(event="hex_results", data="")
         if was:
             self._gui(event="log", text=f"⏹ {reason}，已停止海克斯识别并清空推荐")
 
@@ -361,9 +422,10 @@ class GUIController(threading.Thread):
         results = self.analyzer.analyze(self.current_hero)
         self.overlay_queue.put({"cmd": "UPDATE", "data": results})
         self._gui(event="status", status="analyzed", hero=self.current_hero)
+        self._gui(event="hex_results", data=self._format_hex_results(results))
         print(f"分析完成: {self.current_hero}")
         if self.auto_hex:
-            self.auto_hex.notify_manual_refresh(results or {})
+            self.auto_hex.notify_manual_refresh(results or {}, skip_snapshot=True)
             self.auto_hex.mark_ui_gone_if_needed(results or {})
         return True
 
@@ -908,6 +970,93 @@ class UpdateDialog:
         )
         messagebox.showinfo("更新方式说明", help_text, parent=self.dlg)
 
+# ================= 圆形电源键 =================
+
+class RoundPowerButton(tk.Canvas):
+    """圆形电源键：空闲 = ▶ 开始，运行中 = ■ 停止。
+
+    ttk.Button 只能是方的，用户要求"换个形状放到对局自动化右边"，
+    所以用 Canvas 画圆。同时刻意兼容原 start_btn / stop_btn 的调用方式
+    （pack / pack_forget / config(state=...)），这样其它调用点不用改：
+      - pack() 忽略 fill/expand，保持固定大小
+      - pack_forget() 变成 no-op —— 它是常驻按钮，不参与显隐切换
+      - config(state=...) 映射成禁用外观
+    """
+
+    SIZE = 60
+
+    def __init__(self, parent, command, bg="#FFFFFF"):
+        super().__init__(parent, width=self.SIZE, height=self.SIZE,
+                         bg=bg, highlightthickness=0, bd=0, cursor="hand2")
+        self._cmd = command
+        self._mode = "idle"        # idle / starting / running
+        self._disabled = True      # 数据没加载完之前不可点
+        self._hover = False
+        self._draw()
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Enter>", lambda e: self._draw(hover=True))
+        self.bind("<Leave>", lambda e: self._draw(hover=False))
+
+    # ---------- 外观 ----------
+    def _draw(self, hover=None):
+        if hover is not None:
+            self._hover = hover
+        self.delete("all")
+        s = self.SIZE
+        pad = 4
+        running = self._mode == "running"
+
+        # Apple 风配色：蓝=开始，红=停止
+        if self._disabled:
+            ring, fill, glyph_fg, text = "#D2D2D7", "#F5F5F7", "#C7C7CC", "▶"
+        elif running:
+            ring, fill, glyph_fg, text = "#FF3B30", "#FFEDED", "#D70015", "■"
+        else:
+            ring, fill, glyph_fg, text = "#0071E3", "#EAF3FE", "#0071E3", "▶"
+
+        if self._hover and not self._disabled:
+            fill = "#FFDBDB" if running else "#D5E8FB"
+
+        self.create_oval(pad, pad, s - pad, s - pad,
+                         outline=ring, width=3, fill=fill)
+        self.create_text(s / 2, s / 2 - 1, text=text,
+                         fill=glyph_fg, font=("Segoe UI Symbol", 17, "bold"))
+
+    # ---------- 交互 ----------
+    def _on_click(self, _evt=None):
+        if self._disabled:
+            return
+        try:
+            self._cmd()
+        except Exception as e:
+            print(f"电源键回调异常: {e}")
+
+    def set_mode(self, mode):
+        """idle / starting / running"""
+        self._mode = mode
+        self._draw()
+
+    # ---------- 兼容 ttk.Button 的调用方式 ----------
+    def config(self, **kw):
+        state = kw.pop("state", None)
+        if state is not None:
+            self._disabled = (str(state) == str(tk.DISABLED) or state == "disabled")
+            self._draw()
+        if kw:
+            super().config(**kw)
+
+    configure = config
+
+    def pack(self, **kw):
+        for k in ("fill", "expand", "pady", "padx", "side", "anchor"):
+            kw.pop(k, None)
+        super().pack(**kw)
+
+    def pack_forget(self):
+        # 常驻按钮，不参与显隐切换
+        return None
+
+
 # ================= 主 GUI 应用 =================
 
 class LauncherApp:
@@ -928,6 +1077,9 @@ class LauncherApp:
     ACCENT_DIM  = Theme.ACCENT_DIM
     BG_SEG      = Theme.BG_SEG
     GOLD_GLOW   = Theme.GOLD_GLOW
+    MINT_D      = Theme.MINT_D
+    SKY_D       = Theme.SKY_D
+    VIOLET_D    = Theme.VIOLET_D
 
     FONT_TITLE  = ("Microsoft YaHei", 18, "bold")
     FONT_SUB    = ("Microsoft YaHei", 10)
@@ -939,8 +1091,8 @@ class LauncherApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("nho有手就行 · 海克斯 / 匹配 / 符文")
-        self.root.geometry("560x780")
-        self.root.minsize(520, 700)
+        self.root.geometry("580x720")
+        self.root.minsize(560, 660)
         self.root.configure(bg=self.BG)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -994,6 +1146,9 @@ class LauncherApp:
         # 启动时加载数据
         self.root.after(300, self._load_data)
 
+        # 启动后静默自检官方海克斯数据库（不阻塞 UI，失败不打扰）
+        self.root.after(4000, self._auto_check_official_augments)
+
     # ==========================================
     # ttk 样式配置
     # ==========================================
@@ -1001,35 +1156,35 @@ class LauncherApp:
     def _configure_styles(self):
         s = self.style
 
-        # 主按钮 (蓝色)
+        # 主按钮 (薄荷绿，同宣传网页 CTA)
         s.configure('Accent.TButton',
                      background=self.ACCENT,
-                     foreground='#0a0e17',
+                     foreground='#FFFFFF',
                      font=self.FONT_BTN,
                      padding=(16, 10),
                      borderwidth=0)
         s.map('Accent.TButton',
               background=[('active', self.ACCENT_HVR), ('disabled', self.BORDER)])
 
-        # 金色打赏按钮
+        # 打赏按钮（淡紫，CTA 渐变尾色）
         s.configure('Donate.TButton',
                      background=self.GOLD_GLOW,
-                     foreground='#0a0e17',
+                     foreground='#FFFFFF',
                      font=self.FONT_BTN,
                      padding=(12, 6),
                      borderwidth=0)
         s.map('Donate.TButton',
               background=[('active', self.ACCENT_HVR), ('disabled', self.BORDER)])
 
-        # 次要按钮 (深灰)
+        # 次要按钮 (白底黑字，紧凑)
         s.configure('Secondary.TButton',
                      background=self.BG_CARD,
                      foreground=self.TEXT,
-                     font=self.FONT_BTN,
-                     padding=(12, 8),
+                     font=("Microsoft YaHei", 9),
+                     padding=(10, 4),
                      borderwidth=1)
         s.map('Secondary.TButton',
-              background=[('active', self.BORDER), ('disabled', self.BG)])
+              background=[('active', '#F2F2F4'), ('disabled', self.BG_SEG)])
 
         # 停止按钮 (红色)
         s.configure('Danger.TButton',
@@ -1039,7 +1194,7 @@ class LauncherApp:
                      padding=(16, 10),
                      borderwidth=0)
         s.map('Danger.TButton',
-              background=[('active', '#da3633')])
+              background=[('active', '#D63A3F')])
 
         # 链接按钮 (无背景)
         s.configure('Link.TButton',
@@ -1111,7 +1266,7 @@ class LauncherApp:
         tk.Label(
             frame, text="支持作者，让工具更完美",
             font=("Microsoft YaHei", 13, "bold"),
-            fg=self.ACCENT, bg=self.BG,
+            fg=self.MINT_D, bg=self.BG,
         ).pack(pady=(0, 10))
 
         donate_path = self._asset_path("donate.jpg")
@@ -1158,158 +1313,159 @@ class LauncherApp:
     # ==========================================
 
     def _build_ui(self):
-        main = tk.Frame(self.root, bg=self.BG, padx=20, pady=14)
+        # ---- 固定一屏布局（Apple 风格：不滚动，控件分区紧凑）----
+        main = tk.Frame(self.root, bg=self.BG, padx=18, pady=14)
         main.pack(fill=tk.BOTH, expand=True)
 
-        # ---- Header ----
+        # ---- 顶部工具栏 ----
         hdr = tk.Frame(main, bg=self.BG)
-        hdr.pack(fill=tk.X, pady=(0, 12))
+        hdr.pack(fill=tk.X, pady=(0, 10))
 
-        # 小 logo（assets/logo.png），失败则回退六边形文字
+        # logo（assets/logo.png），失败回退六边形
         logo_path = self._asset_path("logo.png")
         if os.path.exists(logo_path):
             try:
                 self._logo_photo = tk.PhotoImage(file=logo_path)
                 try:
                     iw, ih = self._logo_photo.width(), self._logo_photo.height()
-                    if iw > 48 or ih > 48:
-                        factor = max(1, max(iw, ih) // 40)
+                    if iw > 36 or ih > 36:
+                        factor = max(1, max(iw, ih) // 30)
                         self._logo_photo = self._logo_photo.subsample(factor, factor)
                 except Exception:
                     pass
                 tk.Label(hdr, image=self._logo_photo, bg=self.BG).pack(
-                    side=tk.LEFT, padx=(0, 12)
+                    side=tk.LEFT, padx=(0, 10)
                 )
             except Exception:
-                tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
-                         bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
+                tk.Label(hdr, text="⬡", font=("Segoe UI", 22), fg=self.ACCENT,
+                         bg=self.BG).pack(side=tk.LEFT, padx=(0, 10))
         else:
-            tk.Label(hdr, text="⬡", font=("Segoe UI", 28), fg=self.ACCENT,
-                     bg=self.BG).pack(side=tk.LEFT, padx=(0, 12))
+            tk.Label(hdr, text="⬡", font=("Segoe UI", 22), fg=self.ACCENT,
+                     bg=self.BG).pack(side=tk.LEFT, padx=(0, 10))
 
         title_frame = tk.Frame(hdr, bg=self.BG)
         title_frame.pack(side=tk.LEFT)
         tk.Label(title_frame, text="nho有手就行",
-                 font=self.FONT_TITLE, fg=self.ACCENT, bg=self.BG).pack(anchor="w")
-        tk.Label(title_frame, text="海克斯 OCR · 自动接受/准备 · 符文推荐 · 置顶遮罩",
-                 font=self.FONT_SUB, fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
+                 font=("Microsoft YaHei", 16, "bold"), fg=self.TEXT, bg=self.BG).pack(anchor="w")
+        tk.Label(title_frame, text="自动化 · 符文 · 海克斯 · 玩法推荐",
+                 font=("Microsoft YaHei", 9), fg=self.TEXT_DIM, bg=self.BG).pack(anchor="w")
 
-        # 金色「打赏」按钮（header 右侧，更醒目）
+        # 打赏（主色胶囊）
         donate_btn = tk.Button(
-            hdr, text="💛 打赏",
-            font=("Microsoft YaHei", 12, "bold"),
-            fg="#0a0e17", bg=self.GOLD_GLOW,
-            activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
-            relief=tk.FLAT, padx=18, pady=8, cursor="hand2",
+            hdr, text="打赏",
+            font=("Microsoft YaHei", 10, "bold"),
+            fg="#FFFFFF", bg=self.ACCENT,
+            activeforeground="#FFFFFF", activebackground=self.ACCENT_HVR,
+            relief=tk.FLAT, padx=14, pady=5, cursor="hand2",
             command=self._show_donate_dialog,
         )
-        donate_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        donate_btn.pack(side=tk.RIGHT, padx=(6, 0))
 
-        # 标题下短提示（一次）
-        tk.Label(
-            title_frame, text="喜欢就点右上角打赏",
-            font=("Microsoft YaHei", 9), fg=self.GOLD_GLOW, bg=self.BG,
-        ).pack(anchor="w", pady=(2, 0))
-
-        # 金色分隔
-        tk.Frame(main, bg=self.ACCENT_DIM, height=2).pack(fill=tk.X, pady=(0, 12))
-
-        # ---- 状态条 ----
+        # ---- 状态条（单行式白卡：左英雄右状态）----
         status_card = self._make_card(main)
         hero_row = tk.Frame(status_card, bg=self.BG_CARD)
-        hero_row.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(hero_row, text="当前英雄", font=self.FONT_SUB,
+        hero_row.pack(fill=tk.X)
+        tk.Label(hero_row, text="当前英雄", font=("Microsoft YaHei", 9),
                  fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
         self.hero_label = tk.Label(hero_row, textvariable=self.hero_var,
-                                   font=self.FONT_HERO, fg=self.ACCENT, bg=self.BG_CARD)
-        self.hero_label.pack(side=tk.RIGHT)
-
-        status_row = tk.Frame(status_card, bg=self.BG_CARD)
-        status_row.pack(fill=tk.X)
-        tk.Label(status_row, text="运行状态", font=self.FONT_SUB,
-                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT)
-        self.status_dot = tk.Label(status_row, text="●", font=("Segoe UI", 10),
+                                   font=("Microsoft YaHei", 18, "bold"),
+                                   fg=self.ACCENT, bg=self.BG_CARD)
+        self.hero_label.pack(side=tk.LEFT, padx=(10, 0))
+        self.status_dot = tk.Label(hero_row, text="●", font=("Segoe UI", 9),
                                    fg=self.TEXT_DIM, bg=self.BG_CARD)
         self.status_dot.pack(side=tk.RIGHT, padx=(0, 6))
-        self.status_label = tk.Label(status_row, textvariable=self.status_var,
-                                     font=self.FONT_STATUS, fg=self.TEXT_DIM,
+        self.status_label = tk.Label(hero_row, textvariable=self.status_var,
+                                     font=("Microsoft YaHei", 10), fg=self.TEXT_DIM,
                                      bg=self.BG_CARD)
         self.status_label.pack(side=tk.RIGHT)
 
         # 倒计时（激活时醒目）
         self.countdown_label = tk.Label(
             status_card, textvariable=self.countdown_var,
-            font=("Microsoft YaHei", 16, "bold"),
-            fg=self.GOLD_GLOW, bg=self.BG_CARD, pady=4,
+            font=("Microsoft YaHei", 15, "bold"),
+            fg=self.ACCENT, bg=self.BG_CARD, pady=2,
         )
         # 默认不占位；有内容时再 pack
         self._countdown_packed = False
 
-        # ========== 卡片: 对局自动化 ==========
-        auto_card = self._make_card(main, title="对局自动化")
+        # ========== 卡片: 对局（电源键 + 延迟 + 全部开关一行）=========
+        auto_card = self._make_card(main)
 
-        toggles_auto = [
-            ("auto_accept", "自动接受"),
-            ("auto_ready", "自动开始/准备"),
-        ]
-        row_auto = tk.Frame(auto_card, bg=self.BG_CARD)
-        row_auto.pack(fill=tk.X, pady=(0, 8))
-        for i, (key, label) in enumerate(toggles_auto):
-            var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
-            self._toggle_vars[key] = var
-            cb = tk.Checkbutton(
-                row_auto, text=label, variable=var,
-                font=("Microsoft YaHei", 10),
-                fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
-                activeforeground=self.TEXT, selectcolor=self.BG,
-                highlightthickness=0, bd=0,
-                command=lambda k=key, v=var: self._on_toggle(k, v),
-            )
-            cb.pack(side=tk.LEFT, padx=(0, 20))
+        ctrl_row = tk.Frame(auto_card, bg=self.BG_CARD)
+        ctrl_row.pack(fill=tk.X, pady=(0, 8))
 
-        # 延迟分段选择
-        delay_row = tk.Frame(auto_card, bg=self.BG_CARD)
-        delay_row.pack(fill=tk.X, pady=(2, 0))
-        tk.Label(delay_row, text="执行延迟", font=self.FONT_SUB,
-                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.LEFT, padx=(0, 10))
+        # 左：圆形电源键 + 说明
+        power_box = tk.Frame(ctrl_row, bg=self.BG_CARD)
+        power_box.pack(side=tk.LEFT)
+        self.power_btn = RoundPowerButton(power_box, command=self._toggle_engine,
+                                          bg=self.BG_CARD)
+        self.power_btn.pack(side=tk.LEFT)
+        self.power_caption = tk.Label(
+            power_box, text="开始识别", font=("Microsoft YaHei", 9),
+            fg=self.TEXT_DIM, bg=self.BG_CARD,
+        )
+        self.power_caption.pack(side=tk.LEFT, padx=(10, 0))
 
-        seg = tk.Frame(delay_row, bg=self.BORDER, padx=1, pady=1)
-        seg.pack(side=tk.LEFT)
+        # 右：执行延迟分段控件
+        tk.Label(ctrl_row, text="延迟", font=("Microsoft YaHei", 9),
+                 fg=self.TEXT_DIM, bg=self.BG_CARD).pack(side=tk.RIGHT, padx=(10, 0))
+        seg = tk.Frame(ctrl_row, bg=self.BORDER, padx=1, pady=1)
+        seg.pack(side=tk.RIGHT)
         seg_inner = tk.Frame(seg, bg=self.BG_SEG)
         seg_inner.pack()
 
         current_delay = normalize_delay(self.settings.get("auto_accept_delay", 5))
         self._delay_value = current_delay
         self._delay_btns = {}
-        labels_map = {0: "立即", 3: "3秒", 5: "5秒", 10: "10秒"}
+        labels_map = {0: "立即", 3: "3s", 5: "5s", 10: "10s"}
         for sec in AUTO_DELAY_CHOICES:
             btn = tk.Label(
                 seg_inner, text=labels_map[sec],
                 font=("Microsoft YaHei", 9, "bold"),
-                padx=12, pady=5, cursor="hand2",
+                padx=10, pady=4, cursor="hand2",
             )
             btn.pack(side=tk.LEFT)
             btn.bind("<Button-1>", lambda e, s=sec: self._on_delay_select(s))
             self._delay_btns[sec] = btn
         self._refresh_delay_buttons()
 
-        tk.Label(
-            auto_card,
-            text="接受 / 准备 / 开始前倒计时；关闭开关可取消",
-            font=("Microsoft YaHei", 8),
-            fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
-        ).pack(fill=tk.X, pady=(6, 0))
+        # 兼容原有调用点：start/stop 都指向同一个圆形键
+        self.start_btn = self.power_btn
+        self.stop_btn = self.power_btn
 
-        # ========== 卡片: 英雄/符文 ==========
-        hero_card = self._make_card(main, title="英雄 / 符文")
+        # 开关一行四个（对局自动化 / 符文 / 海克斯 全部集中在这）
+        toggles_row = tk.Frame(auto_card, bg=self.BG_CARD)
+        toggles_row.pack(fill=tk.X)
+        all_toggles = [
+            ("auto_accept", "自动接受"),
+            ("auto_ready", "自动准备"),
+            ("auto_apply_runes", "自动符文"),
+            ("auto_hex", "海克斯识别"),
+        ]
+        for key, label in all_toggles:
+            var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
+            self._toggle_vars[key] = var
+            cb = tk.Checkbutton(
+                toggles_row, text=label, variable=var,
+                font=("Microsoft YaHei", 9),
+                fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
+                activeforeground=self.TEXT, selectcolor="#FFFFFF",
+                highlightthickness=0, bd=0,
+                command=lambda k=key, v=var: self._on_toggle(k, v),
+            )
+            cb.pack(side=tk.LEFT, padx=(0, 14))
+
+        # ========== 卡片: 英雄 / 符文 ==========
+        hero_card = self._make_card(main)
 
         manual_frame = tk.Frame(hero_card, bg=self.BG_CARD)
         manual_frame.pack(fill=tk.X, pady=(0, 8))
 
-        self.hero_entry = tk.Entry(manual_frame, font=("Microsoft YaHei", 11),
+        self.hero_entry = tk.Entry(manual_frame, font=("Microsoft YaHei", 10),
                                    bg=self.BG_INPUT, fg=self.TEXT,
                                    insertbackground=self.TEXT,
                                    highlightbackground=self.BORDER,
+                                   highlightcolor=self.ACCENT,
                                    highlightthickness=1, relief=tk.FLAT,
                                    borderwidth=6)
         self.hero_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
@@ -1320,13 +1476,13 @@ class LauncherApp:
         self.hero_entry.bind("<Return>", lambda e: self._manual_set_hero())
 
         self.manual_btn = ttk.Button(manual_frame, text="锁定",
-                                     style='Secondary.TButton',
+                                     style='Accent.TButton',
                                      command=self._manual_set_hero)
         self.manual_btn.pack(side=tk.RIGHT)
 
-        # 操作按钮（原 F6/F7/F8 热键改为点击）
+        # 操作按钮一行四个
         action_btns = tk.Frame(hero_card, bg=self.BG_CARD)
-        action_btns.pack(fill=tk.X, pady=(0, 8))
+        action_btns.pack(fill=tk.X, pady=(0, 6))
         self.refresh_btn = ttk.Button(
             action_btns, text="🔄 刷新识别", style='Secondary.TButton',
             command=self._manual_refresh_ocr,
@@ -1341,25 +1497,8 @@ class LauncherApp:
             action_btns, text="重置", style='Secondary.TButton',
             command=self._manual_reset,
         )
-        self.reset_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
-
-        rune_toggle_row = tk.Frame(hero_card, bg=self.BG_CARD)
-        rune_toggle_row.pack(fill=tk.X, pady=(0, 6))
-        key, label = "auto_apply_runes", "自动套用符文"
-        var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
-        self._toggle_vars[key] = var
-        tk.Checkbutton(
-            rune_toggle_row, text=label, variable=var,
-            font=("Microsoft YaHei", 10),
-            fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
-            activeforeground=self.TEXT, selectcolor=self.BG,
-            highlightthickness=0, bd=0,
-            command=lambda k=key, v=var: self._on_toggle(k, v),
-        ).pack(side=tk.LEFT)
-
-        action_row = tk.Frame(hero_card, bg=self.BG_CARD)
-        action_row.pack(fill=tk.X, pady=(0, 4))
-        self.rune_btn = ttk.Button(action_row, text="⚔ 套用推荐符文",
+        self.reset_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
+        self.rune_btn = ttk.Button(action_btns, text="⚔ 套用符文",
                                    style='Secondary.TButton',
                                    command=self._manual_apply_runes)
         self.rune_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
@@ -1367,84 +1506,72 @@ class LauncherApp:
         self.rune_info_var = tk.StringVar(value="符文: 锁定英雄后显示推荐")
         tk.Label(hero_card, textvariable=self.rune_info_var, font=("Microsoft YaHei", 9),
                  fg=self.TEXT_DIM, bg=self.BG_CARD, justify="left", anchor="w",
-                 wraplength=500).pack(fill=tk.X, pady=(4, 0))
+                 wraplength=480).pack(fill=tk.X)
 
-        # ========== 卡片: 海克斯 ==========
-        hex_card = self._make_card(main, title="海克斯")
-
-        hex_row = tk.Frame(hex_card, bg=self.BG_CARD)
-        hex_row.pack(fill=tk.X, pady=(0, 8))
-        key, label = "auto_hex", "自动海克斯识别"
-        var = tk.BooleanVar(value=bool(self.settings.get(key, DEFAULT_SETTINGS.get(key, False))))
-        self._toggle_vars[key] = var
-        tk.Checkbutton(
-            hex_row, text=label, variable=var,
-            font=("Microsoft YaHei", 10),
-            fg=self.TEXT, bg=self.BG_CARD, activebackground=self.BG_CARD,
-            activeforeground=self.TEXT, selectcolor=self.BG,
-            highlightthickness=0, bd=0,
-            command=lambda k=key, v=var: self._on_toggle(k, v),
-        ).pack(side=tk.LEFT)
-
-        tk.Label(
-            hex_card,
-            text="进入对局且右上角读秒出现后再识别海克斯 · 检查点欠账→死亡/UI 兑现 · 选牌中持续刷新 · 左上角「刷新」仅对局内显示",
-            font=("Microsoft YaHei", 8),
-            fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w",
-        ).pack(fill=tk.X)
+        # ========== 卡片: 海克斯（识别结果 + 玩法推荐）=========
+        hex_card = self._make_card(main)
 
         self.hex_banner_var = tk.StringVar(value="")
         self.hex_banner = tk.Label(
             hex_card, textvariable=self.hex_banner_var,
             font=("Microsoft YaHei", 10, "bold"),
-            fg=self.GOLD_GLOW, bg=self.BG_CARD, anchor="w",
+            fg=self.ACCENT, bg=self.BG_CARD, anchor="w",
         )
-        self.hex_banner.pack(fill=tk.X, pady=(4, 0))
+        self.hex_banner.pack(fill=tk.X)
         self._hex_banner_clear_after = None
 
-        # ---- 主操作按钮 ----
-        btn_frame = tk.Frame(main, bg=self.BG)
-        btn_frame.pack(fill=tk.X, pady=(4, 10))
+        # 海克斯识别结果：展示最近一次识别出的三个选项与推荐
+        self.hex_result_var = tk.StringVar(value="")
+        self.hex_result = tk.Label(
+            hex_card, textvariable=self.hex_result_var,
+            font=("Microsoft YaHei", 9),
+            fg=self.TEXT_DIM, bg=self.BG_CARD, anchor="w", justify="left",
+        )
+        self.hex_result.pack(fill=tk.X, pady=(4, 0))
 
-        self.start_btn = ttk.Button(btn_frame, text="▶  开始识别",
-                                     style='Accent.TButton', command=self._start_engine)
-        self.start_btn.pack(fill=tk.X, pady=(0, 8))
+        # 空状态不展示卡片，有内容时动态出现（保持首页整洁）
+        self._hex_card = hex_card
+        hex_card.pack_forget()
 
-        self.stop_btn = ttk.Button(btn_frame, text="■  停止运行",
-                                    style='Danger.TButton', command=self._stop_engine)
-        # 停止按钮初始隐藏
+        # ---- 页脚：次级操作一行（小号链接按钮）----
+        footer = tk.Frame(main, bg=self.BG)
+        footer.pack(fill=tk.X, pady=(8, 4))
+        self._footer = footer
 
-        self.update_btn = ttk.Button(btn_frame, text="📦  数据更新",
+        self.update_btn = ttk.Button(footer, text="数据更新",
                                      style='Secondary.TButton',
                                      command=self._show_update_dialog)
-        self.update_btn.pack(fill=tk.X, pady=(0, 6))
+        self.update_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        self.tray_btn = ttk.Button(btn_frame, text="最小化到系统托盘",
-                                    style='Link.TButton', command=self._minimize_to_tray)
-        self.tray_btn.pack()
+        self.wegame_btn = ttk.Button(footer, text="启动 WeGame",
+                                     style='Secondary.TButton',
+                                     command=self._launch_wegame)
+        self.wegame_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        # 底部打赏入口（全宽金色条，紧挨主操作按钮下方、日志上方）
-        footer = tk.Frame(btn_frame, bg=self.BG)
-        footer.pack(fill=tk.X, pady=(10, 2))
-        tk.Button(
-            footer, text="💛 打赏支持 · 扫码自愿",
-            font=("Microsoft YaHei", 12, "bold"),
-            fg="#0a0e17", bg=self.GOLD_GLOW,
-            activeforeground="#0a0e17", activebackground=self.ACCENT_HVR,
-            relief=tk.FLAT, padx=12, pady=10, cursor="hand2",
-            command=self._show_donate_dialog,
-        ).pack(fill=tk.X)
+        self.wegame_path_btn = ttk.Button(footer, text="路径…",
+                                          style='Secondary.TButton',
+                                          command=self._choose_wegame_path)
+        self.wegame_path_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        # ---- 日志面板 ----
-        log_header = tk.Frame(main, bg=self.BG)
-        log_header.pack(fill=tk.X, pady=(4, 4))
-        tk.Label(log_header, text="运行日志", font=self.FONT_SUB,
-                 fg=self.TEXT_DIM, bg=self.BG).pack(side=tk.LEFT)
+        self.wegame_shortcut_btn = ttk.Button(
+            footer, text="快捷方式", style='Secondary.TButton',
+            command=self._create_wegame_shortcut,
+        )
+        self.wegame_shortcut_btn.pack(side=tk.LEFT, padx=(0, 6))
 
+        self.tray_btn = ttk.Button(footer, text="最小化",
+                                    style='Secondary.TButton',
+                                    command=self._minimize_to_tray)
+        self.tray_btn.pack(side=tk.RIGHT)
+
+        self.wegame_hint_var = tk.StringVar(value="")
+        self._update_wegame_hint()
+
+        # ---- 日志（紧凑 4 行）----
         self.log_text = scrolledtext.ScrolledText(
-            main, font=self.FONT_LOG, bg=self.BG_INPUT, fg=self.TEXT_DIM,
+            main, font=("Consolas", 8), bg=self.BG_CARD, fg=self.TEXT_DIM,
             insertbackground=self.TEXT_DIM, selectbackground=self.ACCENT_DIM,
-            relief=tk.FLAT, borderwidth=0, height=10, wrap=tk.WORD, state=tk.DISABLED,
+            relief=tk.FLAT, borderwidth=0, height=4, wrap=tk.WORD, state=tk.DISABLED,
             highlightbackground=self.BORDER, highlightthickness=1
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
@@ -1455,27 +1582,26 @@ class LauncherApp:
         self.log_text.tag_configure("info", foreground=self.TEXT_DIM)
 
     def _make_card(self, parent, title=None):
-        """深色卡片容器（圆角感靠 padding + 边框）。"""
+        """白卡片（Apple 分组容器：白底 + 细描边 + 紧凑内边距）。"""
         outer = tk.Frame(
-            parent, bg=self.BG_CARD, padx=14, pady=12,
+            parent, bg=self.BG_CARD, padx=14, pady=10,
             highlightbackground=self.BORDER, highlightthickness=1,
         )
-        outer.pack(fill=tk.X, pady=(0, 10))
+        outer.pack(fill=tk.X, pady=(0, 8))
         if title:
             title_row = tk.Frame(outer, bg=self.BG_CARD)
-            title_row.pack(fill=tk.X, pady=(0, 8))
-            tk.Frame(title_row, bg=self.ACCENT, width=3, height=14).pack(side=tk.LEFT, padx=(0, 8))
+            title_row.pack(fill=tk.X, pady=(0, 6))
             tk.Label(
                 title_row, text=title,
-                font=("Microsoft YaHei", 11, "bold"),
-                fg=self.ACCENT, bg=self.BG_CARD,
+                font=("Microsoft YaHei", 10, "bold"),
+                fg=self.TEXT, bg=self.BG_CARD,
             ).pack(side=tk.LEFT)
         return outer
 
     def _refresh_delay_buttons(self):
         for sec, btn in self._delay_btns.items():
             if sec == self._delay_value:
-                btn.config(bg=self.ACCENT, fg="#0a0e17")
+                btn.config(bg=self.ACCENT, fg="#FFFFFF")
             else:
                 btn.config(bg=self.BG_SEG, fg=self.TEXT_DIM)
 
@@ -1531,6 +1657,25 @@ class LauncherApp:
     # 引擎控制
     # ==========================================
 
+    def _set_power_mode(self, mode):
+        """更新圆形电源键的外观与说明文字。"""
+        try:
+            self.power_btn.set_mode(mode)
+            self.power_caption.config(text={
+                "idle": "开始识别",
+                "starting": "启动中…",
+                "running": "点击停止",
+            }.get(mode, ""))
+        except Exception:
+            pass
+
+    def _toggle_engine(self):
+        """圆形电源键：未运行则启动，运行中则停止。"""
+        if self.engine_running:
+            self._stop_engine()
+        else:
+            self._start_engine()
+
     def _start_engine(self):
         """启动识别引擎"""
         if self.engine_running:
@@ -1539,8 +1684,7 @@ class LauncherApp:
             messagebox.showwarning("提示", "数据尚未加载完成，请稍候")
             return
 
-        self.start_btn.pack_forget()
-        self.stop_btn.pack(fill=tk.X, pady=(0, 8))
+        self._set_power_mode("starting")
         self.start_btn.config(state=tk.DISABLED)
         self._set_status("启动中...", self.WARNING)
         self._log("正在初始化 OCR 引擎...")
@@ -1600,6 +1744,8 @@ class LauncherApp:
             self.controller.start()
 
             self.engine_running = True
+            self._set_power_mode("running")
+            self.start_btn.config(state=tk.NORMAL)
             self._set_status("运行中", self.SUCCESS)
             self._log("✅ 引擎已启动! 进入对局且右上角读秒出现后再识别海克斯；选人阶段仍可推荐/套用符文")
             if self.settings.get("overlay_topmost", True) and self.overlay_window:
@@ -1616,16 +1762,14 @@ class LauncherApp:
             self._log(f"❌ Overlay 创建失败: {e}")
             traceback.print_exc()
             self._engine_cleanup()
-            self.stop_btn.pack_forget()
-            self.start_btn.pack(fill=tk.X, pady=(0, 8))
+            self._set_power_mode("idle")
             self.start_btn.config(state=tk.NORMAL)
 
     def _stop_engine(self):
         """停止识别引擎"""
         self._log("正在停止引擎...")
         self._engine_cleanup()
-        self.stop_btn.pack_forget()
-        self.start_btn.pack(fill=tk.X, pady=(0, 8))
+        self._set_power_mode("idle")
         self.start_btn.config(state=tk.NORMAL)
         self._set_status("已停止", self.TEXT_DIM)
         self.hero_var.set("—")
@@ -1689,6 +1833,21 @@ class LauncherApp:
                 traceback.print_exc()
             finally:
                 self.gui_queue.put({"event": "update_done"})
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _auto_check_official_augments(self):
+        """后台静默自检官方海克斯数据库；有更新则触发数据重载。"""
+        def _run():
+            try:
+                from scripts.updater import auto_check_official_augments
+                if auto_check_official_augments(log_func=self._log_safe):
+                    self.gui_queue.put({"event": "reload_data"})
+            except Exception as e:
+                try:
+                    self._log_safe(f"⚠ 官方库自检异常（忽略）: {e}")
+                except Exception:
+                    pass
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -1821,6 +1980,10 @@ class LauncherApp:
         elif event == "hex_refresh_reminder":
             self._flash_hex_refresh_banner()
 
+        elif event == "hex_results":
+            self.hex_result_var.set(msg.get("data", "") or "")
+            self._sync_hex_card_visibility()
+
         elif event == "log":
             self._log(msg.get("text", ""))
 
@@ -1952,8 +2115,215 @@ class LauncherApp:
         threading.Thread(target=_run, daemon=True).start()
 
     # ==========================================
+    # WeGame 启动器
+    # ==========================================
+
+    _WEGAME_REG_KEYS = [
+        (0, r"SOFTWARE\WOW6432Node\Tencent\WeGame"),   # HKLM (32位视角)
+        (0, r"SOFTWARE\Tencent\WeGame"),               # HKLM
+        (1, r"Software\Tencent\WeGame"),               # HKCU
+        (1, r"Software\Tencent\wegame"),               # HKCU (小写变体)
+    ]
+    _WEGAME_REG_VALUES = (
+        "InstallPath", "Path", "InstallDir", "WeGamePath",
+        "WegamePath", "wegame.exe", "InstallDir64",
+    )
+
+    def _find_wegame_path(self, scan_drives=False):
+        """自动查找 wegame.exe 路径，找不到返回 None。
+
+        scan_drives=False 仅查: 记忆路径 -> 注册表 -> 常见安装路径(毫秒级)
+        scan_drives=True  追加: 各盘浅层目录扫描(适配网吧路径不固定)
+        """
+        # 1) 记忆路径
+        saved = self.settings.get("wegame_path") or ""
+        if saved and os.path.isfile(saved) and _is_wegame_exe(saved):
+            return saved
+        # 2) 注册表
+        if winreg is not None:
+            for hive_idx, subkey in self._WEGAME_REG_KEYS:
+                try:
+                    hive = winreg.HKEY_LOCAL_MACHINE if hive_idx == 0 else winreg.HKEY_CURRENT_USER
+                    with winreg.OpenKey(hive, subkey) as k:
+                        for val_name in self._WEGAME_REG_VALUES:
+                            try:
+                                v, _ = winreg.QueryValueEx(k, val_name)
+                            except OSError:
+                                continue
+                            for cand in _expand_wegame_candidates(v):
+                                if os.path.isfile(cand):
+                                    return cand
+                except OSError:
+                    continue
+        # 3) 常见安装路径
+        for p in _WEGAME_COMMON_PATHS:
+            if os.path.isfile(p):
+                return p
+        # 4) 各盘浅层扫描（网吧: WeGame 常装在 D:/E: 根目录或一级子目录下）
+        if scan_drives:
+            for drive in _list_fixed_drives():
+                base = drive + "\\"
+                for rel in ("WeGame\\wegame.exe", "wegame\\wegame.exe",
+                            "游戏\\WeGame\\wegame.exe", "网络游戏\\WeGame\\wegame.exe",
+                            "Program Files (x86)\\WeGame\\wegame.exe",
+                            "Program Files\\WeGame\\wegame.exe"):
+                    cand = os.path.join(base, rel)
+                    if os.path.isfile(cand):
+                        return cand
+                # 一级子目录下形如 <dir>\WeGame\wegame.exe
+                for d in _list_dirs(base):
+                    cand = os.path.join(d, "WeGame", "wegame.exe")
+                    if os.path.isfile(cand):
+                        return cand
+        return None
+
+    def _start_wegame_exe(self, path):
+        """启动 wegame.exe（os.startfile 自动处理运行权限）。"""
+        try:
+            os.startfile(path)
+            self._log(f"🚀 已启动 WeGame: {path}")
+            self._set_status("WeGame 已启动", self.SUCCESS)
+        except Exception as e:
+            self._log(f"❌ 启动 WeGame 失败: {e}")
+            messagebox.showerror("启动失败", f"无法启动 WeGame:\n{e}")
+
+    def _launch_wegame(self):
+        """一键启动 WeGame: 快速查找 -> 未命中则磁盘扫描 -> 手动选择兜底。"""
+        path = self._find_wegame_path(scan_drives=False)
+        if path:
+            self._start_wegame_exe(path)
+            return
+        self._log("⏳ 快速查找未命中，正在扫描磁盘定位 WeGame…")
+
+        def _worker():
+            found = self._find_wegame_path(scan_drives=True)
+            if found:
+                try:
+                    self.settings["wegame_path"] = found
+                    self._save_settings()
+                except Exception:
+                    pass
+                self.root.after(
+                    0, lambda: (self._update_wegame_hint(), self._start_wegame_exe(found))
+                )
+            else:
+                self.root.after(0, self._prompt_manual_wegame)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _prompt_manual_wegame(self):
+        self._update_wegame_hint()
+        if messagebox.askyesno(
+            "未找到 WeGame",
+            "自动查找未找到 WeGame。\n\n是否手动选择 wegame.exe 的位置？\n"
+            "(网吧/绿色版可自行定位到可执行文件)",
+        ):
+            self._choose_wegame_path(launch_after=True)
+
+    def _choose_wegame_path(self, launch_after=False):
+        """手动选择 wegame.exe 并记住路径。"""
+        initial = self.settings.get("wegame_path") or ""
+        path = filedialog.askopenfilename(
+            title="选择 WeGame 启动程序 (wegame.exe)",
+            initialdir=os.path.dirname(initial) if initial else "C:\\",
+            filetypes=[("WeGame 程序", "*.exe"), ("所有文件", "*.*")],
+        )
+        if not path:
+            return
+        if not _is_wegame_exe(path):
+            self._log("⚠ 选择的不是 wegame.exe，请重新选择")
+            messagebox.showwarning("路径无效", "请选择 WeGame 的可执行文件 wegame.exe")
+            return
+        self.settings["wegame_path"] = path
+        try:
+            self._save_settings()
+        except Exception:
+            pass
+        self._update_wegame_hint()
+        self._log(f"✅ 已记录 WeGame 路径: {path}")
+        if launch_after:
+            self._start_wegame_exe(path)
+
+    def _update_wegame_hint(self):
+        """刷新界面上的 WeGame 路径状态提示。"""
+        p = self.settings.get("wegame_path") or ""
+        if p and os.path.isfile(p):
+            self.wegame_hint_var.set(f"WeGame 路径: {p}")
+            return
+        saved = self._find_wegame_path(scan_drives=False)
+        if saved:
+            try:
+                self.settings["wegame_path"] = saved
+                self._save_settings()
+            except Exception:
+                pass
+            self.wegame_hint_var.set(f"已自动找到 WeGame: {saved}")
+            return
+        self.wegame_hint_var.set("未找到 WeGame，点「启动 WeGame」自动查找或「选择路径…」手动指定")
+
+    def _create_wegame_shortcut(self):
+        """在桌面创建指向 wegame.exe 的快捷方式（网吧桌面常缺 WeGame 入口）。"""
+        path = self.settings.get("wegame_path") or ""
+        if not (path and os.path.isfile(path)):
+            path = self._find_wegame_path(scan_drives=True)
+        if not path:
+            if messagebox.askyesno(
+                "未找到 WeGame",
+                "自动查找未找到 WeGame，是否手动选择 wegame.exe 位置？",
+            ):
+                self._choose_wegame_path(launch_after=False)
+                path = self.settings.get("wegame_path") or ""
+        if not path or not os.path.isfile(path):
+            self._log("⚠ 未设置 WeGame 路径，无法创建快捷方式")
+            return
+        try:
+            desktop = _get_desktop_path()
+            lnk = os.path.join(desktop, "启动 WeGame.lnk")
+            ps_cmd = (
+                "$ws = New-Object -ComObject WScript.Shell; "
+                "$sc = $ws.CreateShortcut('{}'); "
+                "$sc.TargetPath = '{}'; "
+                "$sc.WorkingDirectory = '{}'; "
+                "$sc.Save()"
+            ).format(
+                lnk.replace("'", "''"),
+                path.replace("'", "''"),
+                os.path.dirname(path).replace("'", "''"),
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                check=True, capture_output=True, timeout=30,
+            )
+            self.settings["wegame_path"] = path
+            try:
+                self._save_settings()
+            except Exception:
+                pass
+            self._update_wegame_hint()
+            self._log(f"✅ 已创建桌面快捷方式: {lnk}")
+            messagebox.showinfo("创建成功", f"已在桌面创建「启动 WeGame」快捷方式:\n{lnk}")
+        except Exception as e:
+            self._log(f"❌ 创建快捷方式失败: {e}")
+            messagebox.showerror("创建失败", f"无法创建桌面快捷方式:\n{e}")
+
+    # ==========================================
     # UI 辅助方法
     # ==========================================
+
+    def _sync_hex_card_visibility(self):
+        """海克斯卡片：有横幅或识别结果时才显示，否则收起。"""
+        try:
+            has_content = bool(
+                self.hex_banner_var.get() or self.hex_result_var.get()
+            )
+            visible = self._hex_card.winfo_manager() != ""
+            if has_content and not visible:
+                self._hex_card.pack(fill=tk.X, pady=(0, 8),
+                                    before=self._footer)
+            elif not has_content and visible:
+                self._hex_card.pack_forget()
+        except Exception:
+            pass
 
     def _flash_hex_refresh_banner(self):
         """状态条 + 海克斯卡片横幅 + 托盘气泡：刷新后已更新推荐。"""
@@ -1963,13 +2333,15 @@ class LauncherApp:
         try:
             if hasattr(self, "hex_banner_var"):
                 self.hex_banner_var.set(f"✨ {msg}")
+                self._sync_hex_card_visibility()
                 if self._hex_banner_clear_after is not None:
                     try:
                         self.root.after_cancel(self._hex_banner_clear_after)
                     except Exception:
                         pass
                 self._hex_banner_clear_after = self.root.after(
-                    3500, lambda: self.hex_banner_var.set("")
+                    3500, lambda: (self.hex_banner_var.set(""),
+                                   self._sync_hex_card_visibility())
                 )
         except Exception:
             pass
@@ -2079,7 +2451,52 @@ def _check_admin():
         return False
 
 
+def make_std_streams_safe():
+    """把 stdout / stderr 切成"UTF-8 + 编码失败不抛异常"。
+
+    为什么必须做：这个程序的日志里到处是 emoji（✅ ⚠ 🔎 ⏹…）。
+    如果进程带着一个 **GBK 编码的控制台**（从 .bat / cmd / 重定向启动就会这样），
+    print 一个 emoji 就会抛 UnicodeEncodeError；而异常处理里再 print 一个 emoji
+    又会再抛一次，于是启动流程被彻底打断，弹"程序启动时发生错误"。
+    打包成 windowed exe 时 stdout 可能是 None（print 会静默丢弃），
+    但一旦有控制台/重定向就会变成真实的 GBK 流 —— 所以不能赌。
+    """
+    import io
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
+        # 首选：直接改编码
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+            continue
+        except Exception:
+            pass
+        # 退路：套一层可容错的 TextIOWrapper（老版本或非标准流）
+        try:
+            buffer = getattr(stream, "buffer", None)
+            if buffer is not None:
+                setattr(sys, name, io.TextIOWrapper(
+                    buffer, encoding="utf-8", errors="replace", line_buffering=True))
+        except Exception:
+            pass
+
+
+def safe_print(msg):
+    """无论如何都不抛异常的 print（控制台可能已被关闭/不可写）。"""
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+
 def main():
+    # 第一件事：让 stdout/stderr 不会因为 emoji 而炸掉启动流程
+    try:
+        make_std_streams_safe()
+    except Exception:
+        pass
+
     try:
         # 高 DPI 适配
         try:
@@ -2087,6 +2504,14 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             pass
+
+        # 把本进程降到"低于正常"优先级 —— 让游戏本体优先拿 CPU，消除游戏内卡顿
+        try:
+            from scripts.config import lower_process_priority
+            if lower_process_priority():
+                safe_print("[OK] 已把本进程降为低优先级（让 CPU 优先给游戏）")
+        except Exception as e:
+            safe_print(f"[WARN] 降优先级步骤跳过: {e}")
 
         # 管理员权限检查
         if not _check_admin():
@@ -2121,9 +2546,99 @@ def main():
             messagebox.showerror("nho有手就行 - 启动错误",
                                  f"程序启动时发生错误:\n\n{traceback.format_exc()}")
         except Exception:
-            print(f"FATAL: {e}")
-            traceback.print_exc()
+            safe_print(f"FATAL: {e}")
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
         sys.exit(1)
+
+
+# ==========================================
+# WeGame 启动器 - 模块级辅助函数
+# ==========================================
+
+def _is_wegame_exe(path):
+    """判断是否为 wegame.exe（大小写不敏感）。"""
+    return bool(path) and os.path.basename(str(path)).lower() == "wegame.exe"
+
+
+def _expand_wegame_candidates(value):
+    """注册表值可能是 exe 路径、安装目录或目录下的子目录，展开为候选 exe 列表。"""
+    if not value:
+        return []
+    s = str(value).strip().strip('"')
+    if not s:
+        return []
+    out = []
+    if s.lower().endswith(".exe"):
+        out.append(s)
+    else:
+        out.append(os.path.join(s, "wegame.exe"))
+        out.append(os.path.join(s, "WeGame", "wegame.exe"))
+        out.append(os.path.join(s, "wegame", "wegame.exe"))
+        out.append(os.path.join(s, "Tencent", "wegame", "wegame.exe"))
+    return out
+
+
+# 常见安装路径（快速查找用）
+_WEGAME_COMMON_PATHS = (
+    r"C:\Program Files (x86)\WeGame\wegame.exe",
+    r"C:\Program Files\WeGame\wegame.exe",
+    r"C:\WeGame\wegame.exe",
+    r"C:\Program Files (x86)\Tencent\WeGame\wegame.exe",
+    r"D:\WeGame\wegame.exe",
+    r"E:\WeGame\wegame.exe",
+    r"F:\WeGame\wegame.exe",
+)
+
+
+def _list_fixed_drives():
+    """枚举固定盘符列表（如 ['C:', 'D:', 'E:']）。"""
+    if os.name != "nt":
+        return []
+    drives = []
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(261)
+        ctypes.windll.kernel32.GetLogicalDriveStringsW(260, buf)
+        for d in buf.value.split("\x00"):
+            if len(d) >= 3 and d[1:3] == ":\\":
+                drives.append(d[:2])
+    except Exception:
+        for letter in "CDEFGH":
+            p = f"{letter}:\\"
+            if os.path.exists(p):
+                drives.append(f"{letter}:")
+    return drives
+
+
+def _list_dirs(path):
+    """列出目录下的一级子目录绝对路径；失败返回空列表。"""
+    try:
+        return [
+            os.path.join(path, n)
+            for n in os.listdir(path)
+            if os.path.isdir(os.path.join(path, n))
+        ]
+    except OSError:
+        return []
+
+
+def _get_desktop_path():
+    """获取当前用户桌面绝对路径（兼容 OneDrive 桌面重定向）。"""
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive",
+             "-Command", "[Environment]::GetFolderPath('Desktop')"],
+            capture_output=True, text=True, timeout=10,
+        )
+        p = r.stdout.strip()
+        if p and os.path.isdir(p):
+            return p
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
 if __name__ == '__main__':

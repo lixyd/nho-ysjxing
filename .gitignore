@@ -206,3 +206,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 项目本地数据（OCR 训练样本 / 缓存 / 临时输出）
+_augdata/
+reports/
+_backup/
+build_run.log
+COMMIT_HASH.txt
+COMMIT_MSG.txt
+测试反馈表.md
+__pycache__/
+*.pyc
