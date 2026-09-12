@@ -12,7 +12,7 @@ import glob
 
 
 APP_NAME = "ARAMHelper"
-ENTRY_POINT = "gui_launcher.py"
+ENTRY_POINT = "ctk_launcher.py"   # CTk 新版 UI（逻辑层仍复用 gui_launcher）
 ICON_PATH = os.path.join("assets", "icon.ico")
 DIST_DIR = os.path.join("dist", APP_NAME)
 
@@ -81,6 +81,9 @@ def build():
         # 收集 rapidocr 完整包 (含 ONNX 模型)
         "--collect-all", "rapidocr_onnxruntime",
 
+        # customtkinter: 运行时读取 assets/themes/*.json，必须收集数据文件
+        "--collect-data", "customtkinter",
+
         # numpy: 完整收集 (Anaconda 环境需要)
         "--collect-all", "numpy",
 
@@ -94,6 +97,8 @@ def build():
         # 隐式导入
         "--hidden-import", "pystray._win32",
         "--hidden-import", "PIL._tkinter_finder",
+        "--hidden-import", "customtkinter",
+        "--hidden-import", "darkdetect",
         "--hidden-import", "thefuzz",
         "--hidden-import", "rapidfuzz",
         "--hidden-import", "onnxruntime",

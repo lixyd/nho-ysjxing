@@ -1,0 +1,33 @@
+✅ PyInstaller 6.22.2
+
+==================================================
+  打包 ARAMHelper
+  入口: gui_launcher.py
+  模式: --onedir (单目录)
+==================================================
+
+执行命令:
+C:\Users\Admin\Downloads\nho-ysjxing_src\.venv\Scripts\python.exe -m PyInstaller --onedir --noconsole --uac-admin --name ARAMHelper --noconfirm --clean --distpath dist\build_1789206934 --collect-all rapidocr_onnxruntime --collect-all numpy --collect-data onnxruntime --collect-binaries onnxruntime --runtime-hook runtime_hooks\fix_numpy.py --hidden-import pystray._win32 --hidden-import PIL._tkinter_finder --hidden-import thefuzz --hidden-import rapidfuzz --hidden-import onnxruntime --hidden-import psutil --hidden-import scripts --hidden-import scripts.lcu_connector --hidden-import scripts.hero_scraper --hidden-import scripts.updater --hidden-import scripts.utils --hidden-import scripts.matchmaking --hidden-import scripts.runes --hidden-import scripts.auto_hex --hidden-import scripts.config --hidden-import scripts.style_detect --hidden-import scripts.combo_recipes --hidden-import scripts.build_augments_official --exclude-module torch --exclude-module torchvision --exclude-module torchaudio --exclude-module scipy --exclude-module pandas --exclude-module matplotlib --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module IPython --exclude-module jupyter --exclude-module notebook --exclude-module nbformat --exclude-module nbconvert --exclude-module pytest --exclude-module black --exclude-module yapf --exclude-module jedi --exclude-module parso --exclude-module dask --exclude-module distributed --exclude-module numba --exclude-module llvmlite --exclude-module h5py --exclude-module tables --exclude-module sqlalchemy --exclude-module botocore --exclude-module boto3 --exclude-module pyarrow --exclude-module openpyxl --exclude-module lxml --exclude-module docutils --exclude-module sphinx --exclude-module pygments --exclude-module zmq --exclude-module tornado --exclude-module lib2to3 --exclude-module blib2to3 --exclude-module nacl --exclude-module cloudpickle --exclude-module onnxruntime.transformers --icon assets\icon.ico gui_launcher.py
+
+
+✅ PyInstaller 打包完成
+
+--- 复制运行时文件 ---
+✅ data/ → dist\build_1789206934\ARAMHelper\data
+✅ assets/ → dist\build_1789206934\ARAMHelper\assets
+✅ 运行时文件复制完成
+
+--- 清理不必要的大型文件 ---
+✅ 已清理 30 MB 不必要的文件 (CUDA/MKL/ffmpeg)
+
+==================================================
+  ✅ 打包完成!
+==================================================
+
+  输出目录: C:\Users\Admin\Downloads\nho-ysjxing_src\dist\build_1789206934\ARAMHelper
+  可执行文件: dist\build_1789206934\ARAMHelper\ARAMHelper.exe
+  总大小: 245.6 MB
+
+  分发方式: 将 dist\build_1789206934\ARAMHelper/ 整个文件夹打成 ZIP 发给用户
+  用户使用: 解压后双击 ARAMHelper.exe 即可运行
+

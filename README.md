@@ -17,8 +17,11 @@ Windows 本地助手：极地大乱斗 · 海克斯大乱斗（ARAM Mayhem）。
 git clone https://github.com/lixyd/nho-ysjxing.git
 cd nho-ysjxing
 python -m venv .venv & .venv\Scripts\activate & pip install -r requirements.txt
-python gui_launcher.py
+python ctk_launcher.py
 ```
+
+> `ctk_launcher.py` 是 customtkinter 新版 UI（薄荷墨绿配色）；如需回退旧界面，运行 `python gui_launcher.py`。
+> 配色预览：直接浏览器打开 `docs/ui_preview.html`，可在三套配色间切换。
 
 Windows 本机打包：`python build.py` → `dist\build_*\ARAMHelper\`。不要在 Linux 交叉打包 exe。
 
@@ -45,7 +48,7 @@ OCR **先认再排**。官方池有、本英雄无排名 →「官方池内 · �
 
 自动接受 ready-check · 大厅准备/开始匹配 · 延迟立即/3/5/10s（默认 5，写入 `data/settings.json`）· 锁定英雄套符文 · 选项刷新 ~0.7s 重推荐。
 
-入口：`gui_launcher.py` / `main.py` / `scripts/{lcu_connector,matchmaking,auto_hex,runes}.py`。
+入口：`ctk_launcher.py`（新版 UI）/ `gui_launcher.py`（旧版 UI + 逻辑层）/ `main.py` / `scripts/{lcu_connector,matchmaking,auto_hex,runes}.py`。
 
 ## 更新
 

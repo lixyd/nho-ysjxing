@@ -43,6 +43,11 @@ UI_KEEP_REFRESH_INTERVAL = 1.5
 # 欠账等待期间轻量重试间隔（不挂 pending，避免全量 OCR 空转）
 OWED_LIGHT_WAIT = 2.0
 POLL_INTERVAL = 0.55
+# 死亡抑制窗口（秒）：死亡期间 + 死亡状态解除后的这段窗口内，禁止任何 UI 探测。
+# LCU 的 is_dead 在死亡瞬间存在更新滞后（health/playerlist 刷新延迟），
+# 而泉水画面（暗底 + 复活倒计时亮字）恰好满足像素预筛，会被误判成选牌 UI 而误弹提示。
+# 用窗口兜底：死亡时持续刷新，死亡解除后仍抑制一小段，避免泉水画面误触发。
+DEAD_SUPPRESS_WINDOW = 2.5
 
 
 class AutoHexWatcher:
@@ -84,6 +89,8 @@ class AutoHexWatcher:
 
         self._was_dead = False
         self._death_cycle_fired = False
+        # 死亡抑制截止时刻：死亡期间 + 解除后窗口内禁止 UI 探测（防泉水画面误判）
+        self._dead_until = 0.0
 
         self._last_option_snapshot: Optional[str] = None
         self._option_change_since: Optional[float] = None
@@ -113,6 +120,7 @@ class AutoHexWatcher:
         self._in_game = False
         self._was_dead = False
         self._death_cycle_fired = False
+        self._dead_until = 0.0
         self._last_option_snapshot = None
         self._option_change_since = None
         self._ui_was_visible = False
@@ -237,6 +245,16 @@ class AutoHexWatcher:
         prev = self._last_level
         self._last_level = level
 
+        # 死亡抑制：死亡期间持续刷新窗口（覆盖 LCU is_dead 滞后/抖动）；
+        # 同时清掉上一轮选牌的 OCR 快照残留，避免泉水画面被误判成"选项变化"而触发识别。
+        if is_dead:
+            self._dead_until = now + DEAD_SUPPRESS_WINDOW
+            self._last_option_snapshot = None
+            self._option_change_since = None
+            self._ui_was_visible = False
+        # 死亡期间 + 解除后窗口内：一律禁止 UI 探测（防泉水画面误判选牌 UI）
+        dead_suppressed = now < self._dead_until
+
         # ---- 死亡边沿：新一轮死亡 → 兑现欠账或独立死亡选牌 ----
         death_edge = is_dead and not self._was_dead
         if death_edge:
@@ -244,9 +262,8 @@ class AutoHexWatcher:
             self._pick_cycle_active = False
             self._suppress_retry = False  # 新一轮死亡可重新尝试识别
             # 双条件：仅当已到达等级检查点(有欠账)且死亡/泉水时才自动识别；
-            # 未到新检查点不自动触发（仍可手动「刷新识别」）
-            if not self._redeem_owed_if_ready(is_dead=True, ui_visible=False, source="死亡/泉水"):
-                self._status("💤 已死亡/回泉水，但未到达新的等级检查点 — 不自动识别（可手动「刷新识别」）")
+            # 未到新检查点不自动触发（完全静默，不弹提示、不做无谓 OCR；仍可手动「刷新识别」）
+            self._redeem_owed_if_ready(is_dead=True, ui_visible=False, source="死亡/泉水")
         elif not is_dead and self._was_dead:
             self._death_cycle_fired = False
         self._was_dead = is_dead
@@ -276,13 +293,15 @@ class AutoHexWatcher:
 
         # ---- OCR：仅在可能选牌时全量；欠账等待期用轻量抽查 ----
         awaiting_pick = bool(self._owed) or self._pending_reason is not None or self._pick_cycle_active
+        # 死亡不再无条件全量 OCR：未到检查点(无欠账)的泉水等待只会空转 + 误判；
+        # 仅在仍有欠账(到过检查点)或已有识别状态时才全量，等待兑现识别。
         want_full = (
-            is_dead
-            or self._pending_reason is not None
+            self._pending_reason is not None
             or self._ui_was_visible
             or self._option_change_since is not None
             or self._last_option_snapshot is not None
             or self._pick_cycle_active
+            or (is_dead and bool(self._owed))
         )
         snapshot = None
         ui_visible = False
@@ -290,12 +309,19 @@ class AutoHexWatcher:
             snapshot, ui_visible = self._snapshot_options()
         elif awaiting_pick:
             # 欠账中：偶尔轻量探测 UI，避免全量三区 OCR 空转
-            if now >= self._retry_after and self._detect_hex_ui_quick():
+            if (
+                now >= self._retry_after
+                and not dead_suppressed
+                and self._detect_hex_ui_quick()
+            ):
                 snapshot, ui_visible = self._snapshot_options()
             elif now >= self._retry_after:
                 self._retry_after = now + OWED_LIGHT_WAIT
         else:
-            if self._detect_hex_ui_quick():
+            # 未到检查点(无欠账)时不探测 UI：泉水/死亡画面(暗底+复活倒计时亮字)
+            # 容易被像素预筛误判成选牌卡，探测了也只会弹无意义的「识别提示」。
+            # 死亡抑制窗口（含死亡状态本身）内一律不探测，兜底 LCU is_dead 滞后。
+            if not dead_suppressed and self._detect_hex_ui_quick():
                 snapshot, ui_visible = self._snapshot_options()
 
         # UI 出现：兑现欠账；无欠账则普通 UI 触发
@@ -306,7 +332,9 @@ class AutoHexWatcher:
                     is_dead=is_dead, ui_visible=True, source="选牌 UI"
                 )
             elif self._pending_reason is None:
-                self._status("🧿 检测到海克斯选牌 UI，但未到等级检查点 — 不自动识别（可手动「刷新识别」）")
+                # 未到等级检查点的裸选牌 UI：不自动识别。
+                # 完全静默——不再弹「识别提示」打扰（仍可手动「刷新识别」）。
+                pass
         self._ui_was_visible = ui_visible
 
         if ui_visible and snapshot:
@@ -370,7 +398,11 @@ class AutoHexWatcher:
             return
 
         if reason in ("checkpoint", "death", "ui", "ui_keep"):
-            ui_likely = is_dead or ui_visible or self._detect_hex_ui_quick()
+            ui_likely = (
+                is_dead
+                or ui_visible
+                or (not dead_suppressed and self._detect_hex_ui_quick())
+            )
             if not ui_likely:
                 if reason == "ui_keep":
                     self._settle_pick_cycle_on_ui_gone()

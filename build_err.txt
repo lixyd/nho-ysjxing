@@ -1,0 +1,261 @@
+39 DEPRECATION: Running PyInstaller as admin is not necessary nor sensible. Run PyInstaller from a non-administrator terminal. PyInstaller 7.0 will block this.
+202 INFO: PyInstaller: 6.22.2, contrib hooks: 2026.7
+202 INFO: Python: 3.12.10
+222 INFO: Platform: Windows-11-10.0.26200-SP0
+222 INFO: Python environment: C:\Users\Admin\Downloads\nho-ysjxing_src\.venv
+222 INFO: wrote C:\Users\Admin\Downloads\nho-ysjxing_src\ARAMHelper.spec
+225 INFO: Removing temporary files and cleaning cache in C:\Users\Admin\AppData\Local\pyinstaller
+277 WARNING: Failed to collect submodules for 'numpy.f2py.tests' because importing 'numpy.f2py.tests' raised: ModuleNotFoundError: No module named 'pytest'
+3450 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\Admin\\Downloads\\nho-ysjxing_src',
+ 'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip',
+ 'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python312\\DLLs',
+ 'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python312\\Lib',
+ 'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python312',
+ 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv',
+ 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages',
+ 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src']
+4199 INFO: Appending 'binaries' from .spec
+4200 INFO: Appending 'datas' from .spec
+4256 INFO: checking Analysis
+4256 INFO: Building Analysis because Analysis-00.toc is non existent
+4256 INFO: Looking for Python shared library...
+4258 INFO: Using Python shared library: C:\Users\Admin\AppData\Local\Programs\Python\Python312\python312.dll
+4258 INFO: Running Analysis Analysis-00.toc
+4258 INFO: Target bytecode optimization level: 0
+4258 INFO: Initializing module dependency graph...
+4259 INFO: Initializing module graph hook caches...
+4308 INFO: Analyzing modules for base_library.zip ...
+5621 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6019 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+7409 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+8868 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10129 INFO: Caching module dependency graph...
+10174 INFO: Analyzing C:\Users\Admin\Downloads\nho-ysjxing_src\gui_launcher.py
+10257 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+10260 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+10730 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10995 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+11074 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11129 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11259 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11582 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11912 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11915 INFO: SetuptoolsInfo: initializing cached setuptools info...
+12897 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13151 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14487 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14634 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14869 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16513 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17233 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17684 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17880 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+18325 INFO: Processing standard module hook 'hook-pystray.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+18657 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+18725 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+19958 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+20145 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+20147 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+20161 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+20209 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+20287 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+20289 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+20310 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+20310 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+20527 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+20569 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+21097 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+21100 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+22189 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+22191 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+23031 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+23033 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+23823 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+24066 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+24493 INFO: Processing standard module hook 'hook-onnxruntime.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+24700 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+25132 INFO: Processing standard module hook 'hook-pypinyin.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\pypinyin\\__pyinstaller'
+25575 INFO: Processing standard module hook 'hook-selenium.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+26828 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+27594 INFO: Analyzing hidden import 'PIL._tkinter_finder'
+27601 INFO: Analyzing hidden import 'scripts.utils'
+27603 INFO: Analyzing hidden import 'numpy._configtool'
+27605 INFO: Analyzing hidden import 'numpy._core._exceptions'
+27610 INFO: Analyzing hidden import 'numpy._core._multiarray_tests'
+27612 INFO: Analyzing hidden import 'numpy._core._operand_flag_tests'
+27612 INFO: Analyzing hidden import 'numpy._core._rational_tests'
+27612 INFO: Analyzing hidden import 'numpy._core._simd'
+27615 INFO: Analyzing hidden import 'numpy._core._struct_ufunc_tests'
+27615 INFO: Analyzing hidden import 'numpy._core._umath_tests'
+27618 INFO: Analyzing hidden import 'numpy._core.cversions'
+27620 INFO: Analyzing hidden import 'numpy._pyinstaller'
+27621 INFO: Analyzing hidden import 'numpy._pyinstaller.hook-numpy'
+27723 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+27724 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+27755 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+27852 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+27854 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+27968 INFO: Processing standard module hook 'hook-win32ctypes.core.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+29054 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+30128 INFO: Analyzing hidden import 'numpy._typing._extended_precision'
+30130 INFO: Analyzing hidden import 'numpy._utils._pep440'
+30142 INFO: Analyzing hidden import 'numpy.conftest'
+30150 INFO: Analyzing hidden import 'numpy.core._dtype'
+30151 INFO: Analyzing hidden import 'numpy.core._dtype_ctypes'
+30153 INFO: Analyzing hidden import 'numpy.core._internal'
+30154 INFO: Analyzing hidden import 'numpy.core._multiarray_umath'
+30156 INFO: Analyzing hidden import 'numpy.core.arrayprint'
+30157 INFO: Analyzing hidden import 'numpy.core.defchararray'
+30159 INFO: Analyzing hidden import 'numpy.core.einsumfunc'
+30159 INFO: Analyzing hidden import 'numpy.core.fromnumeric'
+30160 INFO: Analyzing hidden import 'numpy.core.function_base'
+30162 INFO: Analyzing hidden import 'numpy.core.getlimits'
+30162 INFO: Analyzing hidden import 'numpy.core.numeric'
+30164 INFO: Analyzing hidden import 'numpy.core.numerictypes'
+30165 INFO: Analyzing hidden import 'numpy.core.overrides'
+30167 INFO: Analyzing hidden import 'numpy.core.records'
+30168 INFO: Analyzing hidden import 'numpy.core.shape_base'
+30168 INFO: Analyzing hidden import 'numpy.core.umath'
+30170 INFO: Analyzing hidden import 'numpy.f2py.__main__'
+30171 INFO: Analyzing hidden import 'numpy.f2py._src_pyf'
+30179 INFO: Analyzing hidden import 'numpy.fft.tests'
+30180 INFO: Analyzing hidden import 'numpy.fft.tests.test_helper'
+30185 INFO: Analyzing hidden import 'numpy.fft.tests.test_pocketfft'
+30221 INFO: Analyzing hidden import 'numpy.lib._user_array_impl'
+30272 INFO: Analyzing hidden import 'numpy.lib.tests'
+30272 INFO: Analyzing hidden import 'numpy.lib.tests.test__datasource'
+30284 INFO: Analyzing hidden import 'numpy.lib.tests.test__iotools'
+30295 INFO: Analyzing hidden import 'numpy.lib.tests.test__version'
+30298 INFO: Analyzing hidden import 'numpy.lib.tests.test_array_utils'
+30301 INFO: Analyzing hidden import 'numpy.lib.tests.test_arraypad'
+30365 INFO: Analyzing hidden import 'numpy.lib.tests.test_arraysetops'
+30423 INFO: Analyzing hidden import 'numpy.lib.tests.test_arrayterator'
+30428 INFO: Analyzing hidden import 'numpy.lib.tests.test_format'
+30459 INFO: Analyzing hidden import 'numpy.lib.tests.test_function_base'
+30723 INFO: Analyzing hidden import 'numpy.lib.tests.test_histograms'
+30765 INFO: Analyzing hidden import 'numpy.lib.tests.test_index_tricks'
+30793 INFO: Analyzing hidden import 'numpy.lib.tests.test_io'
+30945 INFO: Analyzing hidden import 'numpy.lib.tests.test_loadtxt'
+30992 INFO: Analyzing hidden import 'numpy.lib.tests.test_mixins'
+31002 INFO: Analyzing hidden import 'numpy.lib.tests.test_nanfunctions'
+31066 INFO: Analyzing hidden import 'numpy.lib.tests.test_packbits'
+31086 INFO: Analyzing hidden import 'numpy.lib.tests.test_polynomial'
+31103 INFO: Analyzing hidden import 'numpy.lib.tests.test_recfunctions'
+31153 INFO: Analyzing hidden import 'numpy.lib.tests.test_regression'
+31164 INFO: Analyzing hidden import 'numpy.lib.tests.test_shape_base'
+31199 INFO: Analyzing hidden import 'numpy.lib.tests.test_stride_tricks'
+31238 INFO: Analyzing hidden import 'numpy.lib.tests.test_twodim_base'
+31264 INFO: Analyzing hidden import 'numpy.lib.tests.test_type_check'
+31281 INFO: Analyzing hidden import 'numpy.lib.tests.test_ufunclike'
+31288 INFO: Analyzing hidden import 'numpy.lib.tests.test_utils'
+31291 INFO: Analyzing hidden import 'numpy.lib.user_array'
+31292 INFO: Analyzing hidden import 'numpy.linalg.lapack_lite'
+31297 INFO: Analyzing hidden import 'numpy.linalg.tests'
+31297 INFO: Analyzing hidden import 'numpy.linalg.tests.test_deprecations'
+31298 INFO: Analyzing hidden import 'numpy.linalg.tests.test_linalg'
+31400 INFO: Analyzing hidden import 'numpy.linalg.tests.test_regression'
+31411 INFO: Analyzing hidden import 'numpy.ma.tests'
+31411 INFO: Analyzing hidden import 'numpy.ma.tests.test_arrayobject'
+31414 INFO: Analyzing hidden import 'numpy.ma.tests.test_core'
+31710 INFO: Analyzing hidden import 'numpy.ma.tests.test_deprecations'
+31713 INFO: Analyzing hidden import 'numpy.ma.tests.test_extras'
+31823 INFO: Analyzing hidden import 'numpy.ma.tests.test_mrecords'
+31845 INFO: Analyzing hidden import 'numpy.ma.tests.test_old_ma'
+31905 INFO: Analyzing hidden import 'numpy.ma.tests.test_regression'
+31910 INFO: Analyzing hidden import 'numpy.ma.tests.test_subclassing'
+31928 INFO: Analyzing hidden import 'numpy.matrixlib.tests'
+31928 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_defmatrix'
+31953 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_interaction'
+31969 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_masked_matrix'
+31981 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_matrix_linalg'
+31984 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_multiarray'
+31988 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_numeric'
+31989 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_regression'
+31991 INFO: Analyzing hidden import 'numpy.polynomial.tests'
+31992 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_chebyshev'
+32022 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_classes'
+32051 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_hermite'
+32074 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_hermite_e'
+32095 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_laguerre'
+32120 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_legendre'
+32142 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_polynomial'
+32179 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_polyutils'
+32186 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_printing'
+32204 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_symbol'
+32213 INFO: Analyzing hidden import 'numpy.random.tests'
+32215 INFO: Analyzing hidden import 'numpy.random.tests.data'
+32215 INFO: Analyzing hidden import 'numpy.random.tests.test_direct'
+32242 INFO: Analyzing hidden import 'numpy.random.tests.test_extending'
+32274 INFO: Analyzing hidden import 'numpy.random.tests.test_generator_mt19937'
+32405 INFO: Analyzing hidden import 'numpy.random.tests.test_generator_mt19937_regressions'
+32414 INFO: Analyzing hidden import 'numpy.random.tests.test_random'
+32497 INFO: Analyzing hidden import 'numpy.random.tests.test_randomstate'
+32588 INFO: Analyzing hidden import 'numpy.random.tests.test_randomstate_regression'
+32599 INFO: Analyzing hidden import 'numpy.random.tests.test_regression'
+32607 INFO: Analyzing hidden import 'numpy.random.tests.test_seed_sequence'
+32610 INFO: Analyzing hidden import 'numpy.random.tests.test_smoke'
+32647 INFO: Analyzing hidden import 'numpy.testing.print_coercion_tables'
+32655 INFO: Analyzing hidden import 'numpy.testing.tests'
+32655 INFO: Analyzing hidden import 'numpy.testing.tests.test_utils'
+32727 INFO: Analyzing hidden import 'numpy.tests'
+32728 INFO: Analyzing hidden import 'numpy.tests.test__all__'
+32730 INFO: Analyzing hidden import 'numpy.tests.test_configtool'
+32734 INFO: Analyzing hidden import 'numpy.tests.test_ctypeslib'
+32753 INFO: Analyzing hidden import 'numpy.tests.test_lazyloading'
+32754 INFO: Analyzing hidden import 'numpy.tests.test_matlib'
+32757 INFO: Analyzing hidden import 'numpy.tests.test_numpy_config'
+32866 INFO: Analyzing hidden import 'numpy.tests.test_numpy_version'
+32869 INFO: Analyzing hidden import 'numpy.tests.test_public_api'
+32882 INFO: Analyzing hidden import 'numpy.tests.test_reloading'
+32887 INFO: Analyzing hidden import 'numpy.tests.test_scripts'
+32889 INFO: Analyzing hidden import 'numpy.tests.test_warnings'
+32892 INFO: Analyzing hidden import 'numpy.typing.mypy_plugin'
+32896 INFO: Analyzing hidden import 'numpy.typing.tests'
+32898 INFO: Analyzing hidden import 'numpy.typing.tests.test_isfile'
+32899 INFO: Analyzing hidden import 'numpy.typing.tests.test_runtime'
+32904 INFO: Analyzing hidden import 'numpy.typing.tests.test_typing'
+32913 INFO: Processing module hooks (post-graph stage)...
+32927 WARNING: Hidden import "pycparser.lextab" not found!
+32927 WARNING: Hidden import "pycparser.yacctab" not found!
+33519 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+33810 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+33839 INFO: Performing binary vs. data reclassification (1965 entries)
+34561 INFO: Looking for ctypes DLLs
+34791 INFO: Analyzing run-time hooks ...
+34791 INFO: Including custom run-time hook 'runtime_hooks/fix_numpy.py'
+34833 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34836 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34847 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34850 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34853 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+34927 INFO: Creating base_library.zip...
+34952 INFO: Looking for dynamic libraries
+36358 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\shapely.libs', 'C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\rapidfuzz.libs']
+36359 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Admin\\Downloads\\nho-ysjxing_src\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin']
+37410 INFO: Warnings written to C:\Users\Admin\Downloads\nho-ysjxing_src\build\ARAMHelper\warn-ARAMHelper.txt
+37520 INFO: Graph cross-reference written to C:\Users\Admin\Downloads\nho-ysjxing_src\build\ARAMHelper\xref-ARAMHelper.html
+37625 INFO: checking PYZ
+37626 INFO: Building PYZ because PYZ-00.toc is non existent
+37626 INFO: Building PYZ (ZlibArchive) C:\Users\Admin\Downloads\nho-ysjxing_src\build\ARAMHelper\PYZ-00.pyz
+38551 INFO: Building PYZ (ZlibArchive) C:\Users\Admin\Downloads\nho-ysjxing_src\build\ARAMHelper\PYZ-00.pyz completed successfully.
+38576 INFO: checking PKG
+38576 INFO: Building PKG because PKG-00.toc is non existent
+38576 INFO: Building PKG (CArchive) ARAMHelper.pkg
+38661 INFO: Building PKG (CArchive) ARAMHelper.pkg completed successfully.
+38663 INFO: Bootloader C:\Users\Admin\Downloads\nho-ysjxing_src\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+38664 INFO: checking EXE
+38664 INFO: Building EXE because EXE-00.toc is non existent
+38664 INFO: Building EXE from EXE-00.toc
+38665 INFO: Copying bootloader EXE to C:\Users\Admin\Downloads\nho-ysjxing_src\build\ARAMHelper\ARAMHelper.exe
+38773 INFO: Copying icon to EXE
+38802 INFO: Copying 0 resources to EXE
+38803 INFO: Embedding manifest in EXE
+38832 INFO: Appending PKG archive to EXE
+38931 INFO: Fixing EXE headers
+39229 INFO: Building EXE from EXE-00.toc completed successfully.
+39250 INFO: checking COLLECT
+39250 INFO: Building COLLECT because COLLECT-00.toc is non existent
+39250 INFO: Building COLLECT COLLECT-00.toc
+41623 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+41661 INFO: Build complete! The results are available in: C:\Users\Admin\Downloads\nho-ysjxing_src\dist\build_1789206934

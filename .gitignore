@@ -217,3 +217,10 @@ COMMIT_MSG.txt
 测试反馈表.md
 __pycache__/
 *.pyc
+
+# --- 本地清理暂存 / 打包产物（不入库）---
+_trash_pending_20260912/
+dist_old/
+_recovered/
+*.zip
+

@@ -985,13 +985,26 @@ class RoundPowerButton(tk.Canvas):
 
     SIZE = 60
 
-    def __init__(self, parent, command, bg="#FFFFFF"):
+    # 默认配色（Apple 风）：旧版 gui_launcher 独立运行时保持不变。
+    # ctk_launcher 会传入自己的 palette（薄荷墨绿）覆盖，避免新版界面里
+    # 电源键残留苹果蓝——两套 UI 共用同一个控件类，故配色必须参数化。
+    DEFAULT_PALETTE = {
+        "idle_ring": "#0071E3", "idle_fill": "#EAF3FE", "idle_glyph": "#0071E3",
+        "run_ring":  "#FF3B30", "run_fill":  "#FFEDED", "run_glyph":  "#D70015",
+        "off_ring":  "#D2D2D7", "off_fill":  "#F5F5F7", "off_glyph":  "#C7C7CC",
+        "idle_hover": "#D5E8FB", "run_hover": "#FFDBDB",
+    }
+
+    def __init__(self, parent, command, bg="#FFFFFF", palette=None):
         super().__init__(parent, width=self.SIZE, height=self.SIZE,
                          bg=bg, highlightthickness=0, bd=0, cursor="hand2")
         self._cmd = command
         self._mode = "idle"        # idle / starting / running
         self._disabled = True      # 数据没加载完之前不可点
         self._hover = False
+        self._palette = dict(self.DEFAULT_PALETTE)
+        if palette:
+            self._palette.update(palette)
         self._draw()
         self.bind("<Button-1>", self._on_click)
         self.bind("<Enter>", lambda e: self._draw(hover=True))
@@ -1005,17 +1018,17 @@ class RoundPowerButton(tk.Canvas):
         s = self.SIZE
         pad = 4
         running = self._mode == "running"
+        p = self._palette
 
-        # Apple 风配色：蓝=开始，红=停止
         if self._disabled:
-            ring, fill, glyph_fg, text = "#D2D2D7", "#F5F5F7", "#C7C7CC", "▶"
+            ring, fill, glyph_fg, text = p["off_ring"], p["off_fill"], p["off_glyph"], "▶"
         elif running:
-            ring, fill, glyph_fg, text = "#FF3B30", "#FFEDED", "#D70015", "■"
+            ring, fill, glyph_fg, text = p["run_ring"], p["run_fill"], p["run_glyph"], "■"
         else:
-            ring, fill, glyph_fg, text = "#0071E3", "#EAF3FE", "#0071E3", "▶"
+            ring, fill, glyph_fg, text = p["idle_ring"], p["idle_fill"], p["idle_glyph"], "▶"
 
         if self._hover and not self._disabled:
-            fill = "#FFDBDB" if running else "#D5E8FB"
+            fill = p["run_hover"] if running else p["idle_hover"]
 
         self.create_oval(pad, pad, s - pad, s - pad,
                          outline=ring, width=3, fill=fill)
