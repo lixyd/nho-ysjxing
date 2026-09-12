@@ -224,3 +224,17 @@ dist_old/
 _recovered/
 *.zip
 
+# --- Windows 噪音 / 构建日志 ---
+desktop.ini
+Thumbs.db
+build_err.txt
+build_out.txt
+build_err.log
+build_out.log
+
+# 注意：*.spec 来自 PyInstaller 通用模板。
+# 本项目的 build.py 会动态改写 ARAMHelper.spec 再交给 PyInstaller，
+# 属于可再生产物，故沿用远端策略继续忽略。
+# 如需复现构建，直接跑 build.py 即可，它会重新生成。
+*.spec
+
