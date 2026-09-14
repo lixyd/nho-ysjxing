@@ -1,13 +1,17 @@
 {
   "_meta": {
-    "note": "Full ARAM rune coverage. Stats from match dataset (u.gg-aram); perk/style IDs validated against Riot Data Dragon 16.17.1 (zh_CN runesReforged). Obsolete 8138 remapped to 8140.",
+    "note": "Full ARAM rune coverage. Stats from match dataset (u.gg-aram); perk/style IDs validated against Riot Data Dragon 16.18.1. Remaps: {8138: 8140}",
     "source": "@champ-r/u.gg-aram + Riot Data Dragon",
     "sourceVersion": "14.22.1-v1731961059465",
-    "built": "2026-09-09",
+    "ddragonVersion": "16.18.1",
+    "built": "2026-09-14",
     "stats": {
       "ugg": 168,
       "hand": 5,
       "heuristic": 0
+    },
+    "perkRemaps": {
+      "8138": 8140
     },
     "style_ids": {
       "精密": 8000,
@@ -15,10 +19,6 @@
       "巫术": 8200,
       "坚决": 8400,
       "启迪": 8300
-    },
-    "ddragonVersion": "16.17.1",
-    "perkRemaps": {
-      "8138": 8140
     }
   },
   "default": {
@@ -129,8 +129,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "name": "ARAM助手-刺客",
-      "note": "perk remap 8138->8140 (DDragon 16.17.1)"
+      "name": "ARAM助手-刺客"
     },
     "support": {
       "primaryStyleId": 8400,
@@ -190,7 +189,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=52.97% pickCount=69089 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.97% pickCount=69089"
     },
     "离群之刺": {
       "role": "assassin",
@@ -310,7 +309,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=51.88% pickCount=65344 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=51.88% pickCount=65344"
     },
     "黑暗之女": {
       "role": "mage",
@@ -330,7 +329,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=55.31% pickCount=42815 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=55.31% pickCount=42815"
     },
     "残月之肃": {
       "role": "marksman",
@@ -390,7 +389,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=46.71% pickCount=84167 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.71% pickCount=84167"
     },
     "双界灵兔": {
       "role": "assassin",
@@ -410,7 +409,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=47.84% pickCount=25328 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=47.84% pickCount=25328"
     },
     "沙漠皇帝": {
       "role": "marksman",
@@ -430,7 +429,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=46.54% pickCount=22139 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.54% pickCount=22139"
     },
     "星界游神": {
       "role": "mage",
@@ -450,7 +449,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=46.94% pickCount=18619 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.94% pickCount=18619"
     },
     "虚空女皇": {
       "role": "fighter",
@@ -510,7 +509,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=53.23% pickCount=131671 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.23% pickCount=131671"
     },
     "弗雷尔卓德之心": {
       "role": "support",
@@ -650,7 +649,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=54.18% pickCount=62460 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=54.18% pickCount=62460"
     },
     "诺克萨斯之手": {
       "role": "tank",
@@ -710,7 +709,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=48.25% pickCount=71461 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=48.25% pickCount=71461"
     },
     "祖安狂人": {
       "role": "tank",
@@ -750,7 +749,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.28% pickCount=67008 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.28% pickCount=67008"
     },
     "蜘蛛女皇": {
       "role": "assassin",
@@ -770,7 +769,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=51.95% pickCount=24046 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=51.95% pickCount=24046"
     },
     "痛苦之拥": {
       "role": "assassin",
@@ -790,7 +789,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=45.49% pickCount=15033 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=45.49% pickCount=15033"
     },
     "探险家": {
       "role": "marksman",
@@ -830,7 +829,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=54.67% pickCount=47938 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=54.67% pickCount=47938"
     },
     "无双剑姬": {
       "role": "assassin",
@@ -870,7 +869,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=48.32% pickCount=39055 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=48.32% pickCount=39055"
     },
     "正义巨像": {
       "role": "mage",
@@ -910,7 +909,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=49.52% pickCount=30050 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.52% pickCount=30050"
     },
     "德玛西亚之力": {
       "role": "tank",
@@ -990,7 +989,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.55% pickCount=111560 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.55% pickCount=111560"
     },
     "灵罗娃娃": {
       "role": "fighter",
@@ -1050,7 +1049,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=52.30% pickCount=140133 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.30% pickCount=140133"
     },
     "异画师": {
       "role": "mage",
@@ -1070,7 +1069,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.02% pickCount=76866 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.02% pickCount=76866"
     },
     "海兽祭司": {
       "role": "tank",
@@ -1210,7 +1209,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=47.62% pickCount=61172 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=47.62% pickCount=61172"
     },
     "戏命师": {
       "role": "marksman",
@@ -1230,7 +1229,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.70% pickCount=165112 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.70% pickCount=165112"
     },
     "暴走萝莉": {
       "role": "marksman",
@@ -1270,7 +1269,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=46.27% pickCount=55363 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.27% pickCount=55363"
     },
     "复仇之矛": {
       "role": "marksman",
@@ -1288,9 +1287,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=48.41% pickCount=16204 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=48.41% pickCount=16204"
     },
     "天启者": {
       "role": "mage",
@@ -1310,7 +1309,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=48.28% pickCount=112705 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=48.28% pickCount=112705"
     },
     "死亡颂唱者": {
       "role": "mage",
@@ -1330,7 +1329,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=49.67% pickCount=51708 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.67% pickCount=51708"
     },
     "虚空行者": {
       "role": "assassin",
@@ -1350,7 +1349,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=47.69% pickCount=33117 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=47.69% pickCount=33117"
     },
     "不祥之刃": {
       "role": "assassin",
@@ -1408,7 +1407,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "heuristic (missing from u.gg-aram) | perk remap 8138->8140 (DDragon 16.17.1)",
+      "note": "heuristic (missing from u.gg-aram)",
       "role": "assassin",
       "name": "ARAM助手-影流之镰"
     },
@@ -1430,7 +1429,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.74% pickCount=34349 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.74% pickCount=34349"
     },
     "虚空掠夺者": {
       "role": "assassin",
@@ -1450,7 +1449,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.62% pickCount=5458 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.62% pickCount=5458"
     },
     "永猎双子": {
       "role": "marksman",
@@ -1510,7 +1509,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=52.99% pickCount=53082 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.99% pickCount=53082"
     },
     "纳祖芒荣耀": {
       "role": "tank",
@@ -1550,7 +1549,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=47.77% pickCount=31005 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=47.77% pickCount=31005"
     },
     "盲僧": {
       "role": "assassin",
@@ -1610,7 +1609,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=52.05% pickCount=54770 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.05% pickCount=54770"
     },
     "冰霜女巫": {
       "role": "mage",
@@ -1630,7 +1629,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.80% pickCount=45390 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.80% pickCount=45390"
     },
     "灰烬驱魔人": {
       "primaryStyleId": 8000,
@@ -1649,7 +1648,7 @@
       "primary_cn": "精密 · 致命节奏",
       "secondary_cn": "主宰",
       "note": "heuristic (new champ)",
-      "role": "mage",
+      "role": "assassin",
       "name": "ARAM助手-灰烬驱魔人"
     },
     "圣枪游侠": {
@@ -1710,7 +1709,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.09% pickCount=104165 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.09% pickCount=104165"
     },
     "熔岩巨兽": {
       "role": "mage",
@@ -1750,7 +1749,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=53.71% pickCount=73032 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.71% pickCount=73032"
     },
     "扭曲树精": {
       "role": "support",
@@ -1788,9 +1787,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=49.97% pickCount=68858 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.97% pickCount=68858"
     },
     "流光镜影": {
       "primaryStyleId": 8200,
@@ -1850,7 +1849,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=48.85% pickCount=173292 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=48.85% pickCount=173292"
     },
     "齐天大圣": {
       "role": "tank",
@@ -1910,7 +1909,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.77% pickCount=75300 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.77% pickCount=75300"
     },
     "百裂冥犬": {
       "role": "assassin",
@@ -1930,7 +1929,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=51.96% pickCount=1555 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=51.96% pickCount=1555"
     },
     "唤潮鲛姬": {
       "role": "mage",
@@ -2010,7 +2009,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=51.99% pickCount=53336 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=51.99% pickCount=53336"
     },
     "狂野女猎手": {
       "role": "assassin",
@@ -2030,7 +2029,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.02% pickCount=126041 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.02% pickCount=126041"
     },
     "不羁之悦": {
       "role": "assassin",
@@ -2068,9 +2067,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=46.89% pickCount=24032 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.89% pickCount=24032"
     },
     "雪原双子": {
       "role": "mage",
@@ -2130,7 +2129,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=47.73% pickCount=171987 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=47.73% pickCount=171987"
     },
     "山隐之焰": {
       "role": "tank",
@@ -2208,9 +2207,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=45.76% pickCount=54734 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=45.76% pickCount=54734"
     },
     "元素女皇": {
       "role": "assassin",
@@ -2230,7 +2229,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=45.16% pickCount=16760 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=45.16% pickCount=16760"
     },
     "德玛西亚之翼": {
       "role": "marksman",
@@ -2270,7 +2269,7 @@
       ],
       "primary_cn": "坚决 · 守护者",
       "secondary_cn": "主宰",
-      "note": "u.gg-aram winRate=50.78% pickCount=21935 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.78% pickCount=21935"
     },
     "披甲龙龟": {
       "role": "tank",
@@ -2430,7 +2429,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=49.40% pickCount=38338 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.40% pickCount=38338"
     },
     "符文法师": {
       "role": "mage",
@@ -2448,7 +2447,7 @@
         5008,
         5001
       ],
-      "primary_cn": "巫术 · 风暴骑手的涌动",
+      "primary_cn": "巫术 · 风暴掠袭者的狂涌",
       "secondary_cn": "主宰",
       "note": "u.gg-aram winRate=54.30% pickCount=31775"
     },
@@ -2570,7 +2569,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=50.06% pickCount=40803 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.06% pickCount=40803"
     },
     "暮光之眼": {
       "role": "tank",
@@ -2593,7 +2592,7 @@
       "note": "u.gg-aram winRate=57.46% pickCount=49368"
     },
     "龙血武姬": {
-      "role": "mage",
+      "role": "tank",
       "name": "ARAM助手-龙血武姬",
       "primaryStyleId": 8100,
       "subStyleId": 8000,
@@ -2610,7 +2609,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=46.31% pickCount=16602 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.31% pickCount=16602"
     },
     "炼金术士": {
       "role": "mage",
@@ -2710,7 +2709,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=49.07% pickCount=129274 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.07% pickCount=129274"
     },
     "琴瑟仙女": {
       "role": "mage",
@@ -2810,7 +2809,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=49.31% pickCount=43850 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=49.31% pickCount=43850"
     },
     "河流之王": {
       "role": "support",
@@ -2850,7 +2849,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=52.12% pickCount=45519 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.12% pickCount=45519"
     },
     "刀锋之影": {
       "role": "assassin",
@@ -2870,7 +2869,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=46.78% pickCount=20025 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.78% pickCount=20025"
     },
     "瓦洛兰之盾": {
       "role": "support",
@@ -2910,7 +2909,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=52.72% pickCount=127062 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.72% pickCount=127062"
     },
     "魂锁典狱长": {
       "role": "support",
@@ -2948,9 +2947,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=51.04% pickCount=45748 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=51.04% pickCount=45748"
     },
     "巨魔之王": {
       "role": "tank",
@@ -3010,7 +3009,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=54.84% pickCount=97488 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=54.84% pickCount=97488"
     },
     "瘟疫之源": {
       "role": "marksman",
@@ -3090,7 +3089,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.43% pickCount=125242 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.43% pickCount=125242"
     },
     "暗夜猎手": {
       "role": "marksman",
@@ -3130,7 +3129,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=52.94% pickCount=84218 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.94% pickCount=84218"
     },
     "虚空之眼": {
       "role": "mage",
@@ -3150,7 +3149,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.90% pickCount=65363 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.90% pickCount=65363"
     },
     "愁云使者": {
       "role": "mage",
@@ -3170,7 +3169,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=54.30% pickCount=23211 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=54.30% pickCount=23211"
     },
     "皮城执法官": {
       "role": "assassin",
@@ -3188,9 +3187,9 @@
         5008,
         5001
       ],
-      "primary_cn": "主宰 · 冰雹之刃",
+      "primary_cn": "主宰 · 丛刃",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=53.99% pickCount=111227 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.99% pickCount=111227"
     },
     "破败之王": {
       "role": "assassin",
@@ -3230,7 +3229,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=54.05% pickCount=155910 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=54.05% pickCount=155910"
     },
     "猩红收割者": {
       "role": "mage",
@@ -3250,7 +3249,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=50.87% pickCount=53231 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.87% pickCount=53231"
     },
     "不灭狂雷": {
       "role": "tank",
@@ -3330,7 +3329,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=50.46% pickCount=94852 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=50.46% pickCount=94852"
     },
     "德邦总管": {
       "role": "tank",
@@ -3429,7 +3428,7 @@
       "primary_cn": "精密 · 致命节奏",
       "secondary_cn": "主宰",
       "note": "heuristic (new champ)",
-      "role": "mage",
+      "role": "marksman",
       "name": "ARAM助手-不破之誓"
     },
     "魔法猫咪": {
@@ -3469,7 +3468,7 @@
       "primary_cn": "精密 · 征服者",
       "secondary_cn": "坚决",
       "note": "heuristic (new champ)",
-      "role": "mage",
+      "role": "fighter",
       "name": "ARAM助手-不落魔锋"
     },
     "生化魔人": {
@@ -3510,7 +3509,7 @@
       ],
       "primary_cn": "主宰 · 电刑",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=44.34% pickCount=35461 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=44.34% pickCount=35461"
     },
     "祖安花火": {
       "role": "marksman",
@@ -3550,7 +3549,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=53.59% pickCount=169076 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.59% pickCount=169076"
     },
     "时光守护者": {
       "role": "mage",
@@ -3570,7 +3569,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=46.43% pickCount=45542 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=46.43% pickCount=45542"
     },
     "暮光星灵": {
       "role": "mage",
@@ -3590,7 +3589,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "精密",
-      "note": "u.gg-aram winRate=52.44% pickCount=62501 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=52.44% pickCount=62501"
     },
     "荆棘之兴": {
       "role": "mage",
@@ -3610,7 +3609,7 @@
       ],
       "primary_cn": "主宰 · 黑暗收割",
       "secondary_cn": "巫术",
-      "note": "u.gg-aram winRate=53.74% pickCount=35556 | perk remap 8138->8140 (DDragon 16.17.1)"
+      "note": "u.gg-aram winRate=53.74% pickCount=35556"
     }
   },
   "role_hints": {
@@ -3654,8 +3653,6 @@
       "含羞蓓蕾",
       "Lissandra",
       "冰霜女巫",
-      "Locke",
-      "灰烬驱魔人",
       "Lulu",
       "仙灵女巫",
       "Lux",
@@ -3688,8 +3685,6 @@
       "符文法师",
       "Seraphine",
       "星籁歌姬",
-      "Shyvana",
-      "龙血武姬",
       "Singed",
       "炼金术士",
       "Sona",
@@ -3714,12 +3709,8 @@
       "猩红收割者",
       "Xerath",
       "远古巫灵",
-      "Yunara",
-      "不破之誓",
       "Yuumi",
       "魔法猫咪",
-      "Zaahen",
-      "不落魔锋",
       "Ziggs",
       "爆破鬼才",
       "Zilean",
@@ -3793,6 +3784,8 @@
       "暗夜猎手",
       "Xayah",
       "逆羽",
+      "Yunara",
+      "不破之誓",
       "Zeri",
       "祖安花火"
     ],
@@ -3809,7 +3802,9 @@
       "Jax",
       "武器大师",
       "Kled",
-      "暴怒骑士"
+      "暴怒骑士",
+      "Zaahen",
+      "不落魔锋"
     ],
     "tank": [
       "坦克",
@@ -3851,6 +3846,8 @@
       "腕豪",
       "Shen",
       "暮光之眼",
+      "Shyvana",
+      "龙血武姬",
       "Sion",
       "亡灵战神",
       "Skarner",
@@ -3912,6 +3909,8 @@
       "诡术妖姬",
       "LeeSin",
       "盲僧",
+      "Locke",
+      "灰烬驱魔人",
       "MasterYi",
       "无极剑圣",
       "Naafiri",
