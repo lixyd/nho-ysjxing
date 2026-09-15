@@ -3,6 +3,8 @@
 Windows 本地助手，专注 **极地大乱斗 / 海克斯大乱斗（ARAM Mayhem）**。
 纯官方 LCU 本地 API 驱动 —— **无进程注入、无内存读写、无键鼠模拟、无 OCR**。
 
+> 官网 / 功能介绍 / 真机截图：**<https://xiaobaiai.asia/xiaobai-helper/>**
+
 ![主界面](docs/ui-main.png)
 
 界面为浅色 Apple 风格：`#F5F5F7` 底 + 白卡片 + `#0071E3` 强调蓝，

@@ -51,7 +51,6 @@ AUGMENT_ALIAS_FILE = os.path.join(DATA_DIR, "augment_alias_zh.json")
 
 # 扩展功能数据
 SETTINGS_FILE   = os.path.join(DATA_DIR, "settings.json")
-ARAM_RUNES_FILE = os.path.join(DATA_DIR, "aram_runes.json")
 
 # 海克斯大乱斗等级检查点
 HEX_LEVEL_CHECKPOINTS = (1, 7, 11, 15)
