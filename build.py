@@ -67,7 +67,7 @@ def build():
     unique_dist = os.path.join("dist", f"build_{timestamp}")
     DIST_DIR = os.path.join(unique_dist, APP_NAME)
 
-    # 构建命令
+    # 构建命令（纯净版：无 OCR / 无 numpy / 无 onnxruntime，体积大幅缩小）
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onedir",
@@ -77,48 +77,30 @@ def build():
         "--noconfirm",       # 不确认覆盖
         "--clean",           # 清理缓存
         "--distpath", unique_dist,
-        
-        # 收集 rapidocr 完整包 (含 ONNX 模型)
-        "--collect-all", "rapidocr_onnxruntime",
 
         # customtkinter: 运行时读取 assets/themes/*.json，必须收集数据文件
         "--collect-data", "customtkinter",
 
-        # numpy: 完整收集 (Anaconda 环境需要)
-        "--collect-all", "numpy",
-
-        # onnxruntime: 只收集数据文件和二进制, 不收集子模块 (避免拖入 torch)
-        "--collect-data", "onnxruntime",
-        "--collect-binaries", "onnxruntime",
-
-        # 运行时 hook: 修复 numpy 冻结环境检测
-        "--runtime-hook", os.path.join("runtime_hooks", "fix_numpy.py"),
-
         # 隐式导入
-        "--hidden-import", "pystray._win32",
         "--hidden-import", "PIL._tkinter_finder",
         "--hidden-import", "customtkinter",
         "--hidden-import", "darkdetect",
         "--hidden-import", "thefuzz",
         "--hidden-import", "rapidfuzz",
-        "--hidden-import", "onnxruntime",
-        # 进程降优先级（让 CPU 优先给游戏）用到的 psutil
+        # 进程降优先级 / LCU 进程扫描用到的 psutil
         "--hidden-import", "psutil",
         "--hidden-import", "scripts",
         "--hidden-import", "scripts.lcu_connector",
-        "--hidden-import", "scripts.hero_scraper",
-        "--hidden-import", "scripts.updater",
-        "--hidden-import", "scripts.utils",
         "--hidden-import", "scripts.matchmaking",
-        "--hidden-import", "scripts.runes",
-        "--hidden-import", "scripts.auto_hex",
+        "--hidden-import", "scripts.bench_pick",
+        "--hidden-import", "scripts.champ_icons",
+        "--hidden-import", "scripts.wegame",
         "--hidden-import", "scripts.config",
-        # 流派识别（main.py 顶部静态 import，PyInstaller 通常能识别；显式声明保险）
-        "--hidden-import", "scripts.style_detect",
-        # 热门玩法路线 + 赌狗玩法提示（data/combo_recipes.json）
-        "--hidden-import", "scripts.combo_recipes",
-        # 官方海克斯库：updater 里是函数内动态 import，静态分析可能漏掉
-        "--hidden-import", "scripts.build_augments_official",
+        "--hidden-import", "scripts.winpos",
+        "--hidden-import", "scripts.utils",
+        "--hidden-import", "scripts.autoflow",
+        "--hidden-import", "scripts.augments",
+        "--hidden-import", "scripts.tray",
 
         ENTRY_POINT,
     ]
@@ -149,21 +131,21 @@ def build():
 
 
 def copy_runtime_files():
-    """复制运行时需要的数据文件到 dist 目录"""
+    """复制运行时需要的数据文件到 dist 目录（纯净版只带英雄表 + 设置）"""
     print("\n--- 复制运行时文件 ---")
 
-    # 复制 data/ 目录 (CSV, JSON - 用户可更新)
-    src_data = "data"
     dst_data = os.path.join(DIST_DIR, "data")
-    if os.path.exists(src_data):
-        if os.path.exists(dst_data):
-            shutil.rmtree(dst_data)
-        shutil.copytree(src_data, dst_data)
-        print(f"✅ data/ → {dst_data}")
-    else:
-        print(f"⚠ data/ 不存在，跳过")
+    os.makedirs(dst_data, exist_ok=True)
+    for name in ("champions.json", "settings.json", "pinyin_map.json",
+                 "augments_official.json", "augment_alias_zh.json"):
+        src = os.path.join("data", name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(dst_data, name))
+            print(f"✅ data/{name} → {dst_data}")
+        else:
+            print(f"⚠ data/{name} 不存在，跳过")
 
-    # 复制 assets/ 目录 (icon.ico / icon.png / logo.png / donate.jpg)
+    # 复制 assets/ 目录 (icon.ico / icon.png / logo.png)
     src_assets = "assets"
     dst_assets = os.path.join(DIST_DIR, "assets")
     if os.path.exists(src_assets):

@@ -56,23 +56,36 @@ ARAM_RUNES_FILE = os.path.join(DATA_DIR, "aram_runes.json")
 # 海克斯大乱斗等级检查点
 HEX_LEVEL_CHECKPOINTS = (1, 7, 11, 15)
 
-# 自动接受 / 开始 可选延迟（秒）；0 = 立即执行
-AUTO_DELAY_CHOICES = (0, 3, 5, 10)
+# 自动接受可选延迟（秒）——按手绘稿固定 1 / 3 / 5
+AUTO_DELAY_CHOICES = (1, 3, 5)
 
-# 默认开关
+# 默认开关（纯净版：仅匹配自动化 + 备战席抢英雄 + WeGame 启动）
 DEFAULT_SETTINGS = {
     "auto_accept": True,
     "auto_ready": True,
-    "auto_hex": True,
-    "auto_apply_runes": False,
-    "overlay_topmost": True,
-    "auto_accept_delay": 5,
+    "auto_accept_delay": 3,
+    # 备战席抢英雄：解锁前提前量（秒），内部默认值，不在 UI 展示
+    "bench_lead": 2,
     # WeGame 启动器：用户手动指定或自动探测到的 wegame.exe 路径（字符串，可为空）
     "wegame_path": "",
+    # 自动回到房间：一局结束后自动点「再次游戏」回到房间
+    "auto_play_again": False,
+    # 自动重连：客户端掉线（Reconnect 阶段）自动重新连接回对局
+    "auto_reconnect": True,
+    # 自动接受房间邀请（组队被拉）
+    "auto_accept_invite": False,
+    # 开机自启（写 HKCU\...\Run）
+    "autostart": False,
+    # 点关闭时最小化到托盘而不是退出
+    "close_to_tray": False,
+    # 对局中自动隐藏窗口，回到房间自动弹出（照搬 LeagueAkari 小窗的 autoShow 三态机）
+    "auto_hide_in_game": True,
+    # 自动吸附到英雄联盟客户端右上角（照搬 LA 的 repositionToAlignLeagueClientUx）
+    "snap_to_client": True,
 }
 
 
-def normalize_delay(value, default=5):
+def normalize_delay(value, default=3):
     """将延迟秒数规范到 AUTO_DELAY_CHOICES。"""
     try:
         iv = int(value)
@@ -99,6 +112,11 @@ def load_settings(path=None):
                     raw = loaded[key]
                     if key == "auto_accept_delay":
                         data[key] = normalize_delay(raw, default=default)
+                    elif key == "bench_lead":
+                        try:
+                            data[key] = max(1, min(10, int(float(raw))))
+                        except (TypeError, ValueError):
+                            data[key] = default
                     elif key == "wegame_path":
                         data[key] = str(raw) if raw else ""
                     else:
@@ -119,6 +137,11 @@ def save_settings(settings, path=None):
                     continue
                 if key == "auto_accept_delay":
                     payload[key] = normalize_delay(settings[key], default=default)
+                elif key == "bench_lead":
+                    try:
+                        payload[key] = max(1, min(10, int(float(settings[key]))))
+                    except (TypeError, ValueError):
+                        payload[key] = default
                 elif key == "wegame_path":
                     payload[key] = str(settings[key]) if settings[key] else ""
                 else:

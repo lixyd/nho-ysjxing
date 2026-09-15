@@ -50,11 +50,16 @@ class MatchmakingService(threading.Thread):
         self._last_ready_ts = 0.0
         self._last_search_ts = 0.0
         self._last_cs_ready_ts = 0.0
+        self._manual_start = False
         self._countdown_lock = threading.Lock()
 
     def stop(self):
         self.running = False
         self._emit_countdown(None, "")
+
+    def request_start(self):
+        """UI「开始」按钮：下一轮 tick 立即尝试准备 + 开始匹配。"""
+        self._manual_start = True
 
     def set_flag(self, key: str, value):
         if key == "auto_accept_delay":
@@ -148,6 +153,16 @@ class MatchmakingService(threading.Thread):
     def _tick(self):
         if not self._ensure_lcu():
             return
+
+        if self._manual_start:
+            self._manual_start = False
+            phase = self.lcu.get_gameflow_phase()
+            if phase in ("Lobby", "None", None):
+                self._log("▶ 手动开始匹配")
+                self._try_party_ready()
+                self._try_start_matchmaking()
+            else:
+                self._log(f"⚠ 当前阶段 {phase or '未知'}，无法开始匹配")
 
         if self.flags.get("auto_accept", True):
             self._try_accept_ready_check()

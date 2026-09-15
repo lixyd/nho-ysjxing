@@ -533,6 +533,60 @@ class LCUConnector:
         except Exception:
             return None
 
+    def get_pickable_champion_ids(self):
+        """本局「客户端允许选用/换上」的英雄 id 集合 —— 首选数据源。
+
+        LCU 官方接口，客户端自己按当前模式 + 你的英雄库（拥有或周免）算好：
+          GET /lol-champ-select/v1/pickable-champion-ids
+        LeagueAkari 用的就是这个（它内部叫 champ-select-pickable-champ-ids）。
+        不在选人阶段时返回 404 → None。
+        """
+        data = self.get_json("/lol-champ-select/v1/pickable-champion-ids")
+        if isinstance(data, list):
+            out = set()
+            for x in data:
+                try:
+                    out.add(int(x))
+                except (TypeError, ValueError):
+                    continue
+            return out
+        return None
+
+    def get_owned_champion_ids(self):
+        """备用数据源：当前召唤师「拥有 + 本周免费」的英雄 id 集合。
+
+        pickable-champion-ids 拿不到时兜底（例如非选人阶段 / 接口异常）。
+        大乱斗规则：随机分配与备战席交换都只允许你拥有的英雄，周免算作拥有。
+        接口：/lol-champions/v1/inventories/{summonerId}/champions
+        失败返回 None（调用方按「未知」处理，不置灰）。
+        """
+        try:
+            me = self.get_json("/lol-summoner/v1/current-summoner") or {}
+            sid = me.get("summonerId")
+            if not sid:
+                return None
+            data = self.get_json(
+                f"/lol-champions/v1/inventories/{sid}/champions") or []
+            owned = set()
+            if isinstance(data, list):
+                for c in data:
+                    if not isinstance(c, dict):
+                        continue
+                    own = c.get("ownership") or {}
+                    if own.get("owned") or own.get("freeToPlayReward"):
+                        owned.add(int(c.get("championId") or c.get("id") or 0))
+            owned.discard(0)
+            return owned
+        except Exception:
+            return None
+
+    def get_bytes(self, endpoint):
+        """GET 并返回原始字节（英雄头像等二进制资源）；失败返回 None。"""
+        resp = self._request('GET', endpoint)
+        if resp is None or resp.status_code != 200 or not resp.content:
+            return None
+        return resp.content
+
     def post_ok(self, endpoint, json_body=None):
         kwargs = {}
         if json_body is not None:
