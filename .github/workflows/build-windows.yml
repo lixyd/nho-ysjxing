@@ -49,20 +49,20 @@ jobs:
             throw "ARAMHelper folder not found under $($buildDir.FullName)"
           }
           Write-Host "Zipping: $aramHelper"
-          if (Test-Path nho-ysjxing-windows.zip) { Remove-Item nho-ysjxing-windows.zip -Force }
-          Compress-Archive -Path $aramHelper -DestinationPath nho-ysjxing-windows.zip
-          Get-Item nho-ysjxing-windows.zip | Format-List FullName, Length, LastWriteTime
+          if (Test-Path xiaobai-helper-windows.zip) { Remove-Item xiaobai-helper-windows.zip -Force }
+          Compress-Archive -Path $aramHelper -DestinationPath xiaobai-helper-windows.zip
+          Get-Item xiaobai-helper-windows.zip | Format-List FullName, Length, LastWriteTime
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nho-ysjxing-windows
-          path: nho-ysjxing-windows.zip
+          name: xiaobai-helper-windows
+          path: xiaobai-helper-windows.zip
           retention-days: 14
 
       - name: Create / update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: nho-ysjxing-windows.zip
+          files: xiaobai-helper-windows.zip
           generate_release_notes: true
